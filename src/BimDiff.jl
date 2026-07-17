@@ -9,6 +9,8 @@ using LinearAlgebra
 using StaticArrays
 using FFTW
 using LinearSolve
+using CUDA
+import Adapt
 
 
 #
@@ -83,7 +85,7 @@ export BoundaryCondition, Dirichlet, Neumann
 export kernel
 export cauchy_integral, compute_boundary_limit
 export compute_laplace_slp_matrix, compute_laplace_dlp_adjoint_matrix
-export BoundaryDensity, BoundaryCondition, Dirichlet, Neumann, data
+export AbstractBoundaryDensity, BoundaryDensity, BoundaryCondition, Dirichlet, Neumann, data
 
 export kernel
 export BoundaryValueProblem, solve, evaluate, solve_and_evaluate

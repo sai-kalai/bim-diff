@@ -19,6 +19,7 @@ end
 # Laplace double layer potential (DLP) kernel
 # k_DLP(x, y) = 1/2pi  (x - y) ⋅ n_y / |x - y|^2
 @inline function kernel(::Type{<:DoubleLayer{Laplace}}, r_norm_sq, r_dot_ny)
+    # @cuprintf("%d, %d", threadIdx().x, threadIdx().y)
     return 1 / 2pi * r_dot_ny / r_norm_sq
 
 end

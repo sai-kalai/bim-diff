@@ -4,7 +4,9 @@ version = "0.1.0"
 authors = ["simon cadavid <simon.cadavid98@gmail.com>"]
 
 [deps]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Cthulhu = "f68482b8-f384-11e8-15f7-abe071a5a75f"
 Debugger = "31a5f54b-26ea-5ae9-a837-f05ce5417438"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
@@ -29,7 +31,9 @@ BimDiffEnzymeExt = "Enzyme"
 BimDiffGLMakieExt = "GLMakie"
 
 [compat]
+Adapt = "4.7.0"
 BenchmarkTools = "1.8.0"
+CUDA = "6.2.1"
 Cthulhu = "3.0.2"
 Debugger = "0.7.16"
 FFTW = "1.10.0"
@@ -49,6 +53,7 @@ StaticArrays = "1.9.18"
 Test = "1.11.0"
 
 [extras]
+CUDA_Runtime_jll = "76a88914-d11a-5bdc-97e0-2f5a05c973a2"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 

@@ -1,6 +1,12 @@
 
 abstract type AbstractBoundaryDensity end
 
+function Adapt.adapt_structure(to, dens::D) where {D<:AbstractBoundaryDensity}
+    D(
+        Adapt.adapt(to, data(dens)),
+    )
+end
+
 # TODO type stability
 struct BoundaryDensity <: AbstractBoundaryDensity
     φ::AbstractVector

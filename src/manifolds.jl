@@ -35,6 +35,19 @@ struct DiscreteClosedCurve{
 
 end
 
+function Adapt.adapt_structure(to, curve::DiscreteClosedCurve)
+    DiscreteClosedCurve(
+        Adapt.adapt(to, curve.x),
+        Adapt.adapt(to, curve.v),
+        Adapt.adapt(to, curve.a),
+        Adapt.adapt(to, curve.s),
+        Adapt.adapt(to, curve.t),
+        Adapt.adapt(to, curve.n),
+        Adapt.adapt(to, curve.k),
+        Adapt.adapt(to, curve.w),
+        Adapt.adapt(to, curve.cw),
+    )
+end
 
 function make_dummy_curve(x)
     n, dim_x = size(x)

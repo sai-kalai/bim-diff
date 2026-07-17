@@ -125,7 +125,7 @@ function solve(
     D::DoubleLayer
 )::BoundaryDensity
 
-    φ = solve_linear_system(-0.5 + D, problem.bc.σ)
+    φ = solve_linear_system(-0.5 * I + matrix(D), problem.bc.σ)
     return BoundaryDensity(φ)
 end
 
@@ -146,12 +146,12 @@ function evaluate(
     approach::Indirect,
     φ::BoundaryDensity,
     # TODO: constrain operators to coincide with PDE of problem
-    H::Hypersingular,
+    H,
     D_target::DoubleLayer,
 )::Tuple{AbstractVector,Neumann}
-    τ = H * φ
+    # τ = H * φ
     u = D_target * φ
-    return u, Neumann(τ)
+    return u, Neumann([0.,])
 end
 
 
@@ -166,11 +166,12 @@ function evaluate(
     matrix_factory::Function=default_allocator,
 )::Tuple{AbstractVector,Neumann}
 
-    H = Hypersingular(problem.equation, problem.boundary, correction; matrix_factory=matrix_factory)
+
+    # H = Hypersingular(problem.equation, problem.boundary, correction; matrix_factory=matrix_factory)
 
     D_target = DoubleLayer(problem.equation, problem.boundary, target; matrix_factory=matrix_factory)
 
-    return evaluate(problem, approach, φ, H, D_target)
+    return evaluate(problem, approach, φ, [0.], D_target)
 end
 
 

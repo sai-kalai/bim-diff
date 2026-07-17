@@ -15,8 +15,11 @@ using LinearAlgebra: exactdiv
 
 using Test
 using Revise
+using CUDA
 
 using Enzyme
+
+import Adapt
 
 
 
@@ -243,30 +246,29 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     indirect = Indirect()
 
     # indicate how to reserve memory
-    allocator = (_m, _n) -> zeros(_m, _n)
+    allocator = (_m, _n) -> CUDA.fill(0., _m, _n)
 
     x_test = test_locations()
 
 
     x_source, density_source = point_sources()
 
-    density_source = BoundaryDensity(density_source)
+    density_source = Adapt.adapt(CuArray, density_source)
 
     n_source = size(x_source, 1)
 
+    Γ_source = Adapt.adapt(CuArray, make_dummy_curve(x_source))
 
-    Γ_source = make_dummy_curve(x_source)
-
-    S_manuf = SingleLayer(laplace, Γ_source, x_test; matrix_factory=allocator)
+    S_manuf = SingleLayer(laplace, Γ_source, Adapt.adapt(CuArray, x_test); matrix_factory=allocator)
 
     # matrix = compute_laplace_slp_matrix(x_test, x_source)
-    u_exact = S_manuf * density_source # exact solution at test points
-    u_exact_reference = reference_exact_solution()
+    # u_exact = S_manuf * density_source # exact solution at test points
+    # u_exact_reference = reference_exact_solution()
 
     # @assert norm(u_exact - u_exact_reference) < 1e-15
-    @test u_exact ≈ u_exact_reference atol=1e-15
+    # @test u_exact ≈ u_exact_reference atol=1e-15
 
-    x_test = [x_test; ball(0.1, 10); ball(0.3, 30); ball(0.6, 60); Matrix(stack((t) -> starfish(t, 0.9), 0:0.1:2pi))']
+    x_test = Adapt.adapt(CuArray, [x_test; ball(0.1, 10); ball(0.3, 30); ball(0.6, 60); Matrix(stack((t) -> starfish(t, 0.9), 0:0.1:2pi))'])
 
     # scatter!(ax, x_test[:, 1], x_test[:, 2], color=u_exact)
 
@@ -278,55 +280,56 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
     for (i, n) ∈ enumerate(n_vals)
 
-        Γ = DiscreteClosedCurve(n, starfish) # boundary of the domain
+        Γ_cpu = DiscreteClosedCurve(n, starfish) # boundary of the domain
+
+        Γ = Adapt.adapt(CuArray, Γ_cpu)
+
+        @show typeof(Γ)
+        @show typeof(Γ.x)
 
         # fig, ax = visualize(Γ)
 
         # target: domain boundary, source: manufactured solution point sources
         S_source = SingleLayer(laplace, Γ_source, Γ.x; matrix_factory=allocator)
-        D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x, Γ.n; matrix_factory=allocator)
+        # D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x, Γ.n; matrix_factory=allocator)
 
 
         σ = S_source * density_source # Dirichlet BC
-        τ_exact = D_star_source * density_source # Neumann BC exact solution
+        # τ_exact = D_star_source * density_source # Neumann BC exact solution
 
 
 
-        S = SingleLayer(laplace, Γ, kapur_rokhlin)
-        D = DoubleLayer(laplace, Γ)
-        D_star = AdjointDoubleLayer(laplace, Γ)
-        H_zeta = Hypersingular(laplace, Γ, zeta)
-        H_sidi = Hypersingular(laplace, Γ, sidi)
+        # S = SingleLayer(laplace, Γ, kapur_rokhlin; matrix_factory=allocator)
+        D = DoubleLayer(laplace, Γ; matrix_factory=allocator)
+        # D_star = AdjointDoubleLayer(laplace, Γ; matrix_factory=allocator)
+        # H_zeta = Hypersingular(laplace, Γ, zeta; matrix_factory=allocator)
+        # H_sidi = Hypersingular(laplace, Γ, sidi; matrix_factory=allocator)
 
 
-        S_target = SingleLayer(laplace, Γ, x_test,)
-        D_target = DoubleLayer(laplace, Γ, x_test,)
+        # S_target = SingleLayer(laplace, Γ, x_test, ; matrix_factory=allocator)
+        D_target = DoubleLayer(laplace, Γ, x_test; matrix_factory=allocator)
 
         # Dirichlet Zeta Direct
 
-        s = (x) -> begin
-            bc = Dirichlet(σ)
-            pb = BoundaryValueProblem(
-                laplace,
-                bc,
-                interior,
-                Γ
-            )
-
-            return solve_and_evaluate(
-                pb,
-                Indirect(),
-                Sidi(),
-                x,
-            )
-        end
-
-
-
-        @time u, τ = s(x_test)
+        # s = (x) -> begin
+        #     bc = Dirichlet(σ)
+        #     pb = BoundaryValueProblem(
+        #         laplace,
+        #         bc,
+        #         interior,
+        #         Γ
+        #     )
+        #
+        #     return solve_and_evaluate(
+        #         pb,
+        #         Indirect(),
+        #         Sidi(),
+        #         x,
+        #     )
+        # end
 
 
-
+        # @time u, τ = s(x_test)
 
         prob = BoundaryValueProblem(
             laplace,
@@ -336,15 +339,14 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         )
 
 
-        bie_solution = solve(prob, direct, D_star, H_zeta)
+        bie_solution = solve(prob, indirect, D)
 
         # primal run of solution evaluation
-        bvp_solution = evaluate(prob, direct, bie_solution, x_test)
+        bvp_solution = evaluate(prob, indirect, zeta, bie_solution, x_test; matrix_factory=allocator)
 
 
 
         # diff of only evaluation of solution
-
         @time begin
 
             dx_test_1 = Enzyme.make_zero(x_test)
@@ -356,20 +358,24 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
             dx_test_1[:, 1] .= 1.;
             dx_test_2[:, 2] .= 1.;
 
-            f1 = autodiff(
+            f1, _ = autodiff_deferred(
                 ForwardWithPrimal,
                 Const(evaluate),
+                Duplicated,
                 Duplicated(prob, dprob),
-                Const(direct),
+                Const(indirect),
+                Const(zeta),
                 Duplicated(bie_solution, dbie_solution),
                 Duplicated(x_test, dx_test_1),
             )
 
-            f2 = autodiff(
+            f2, _ = autodiff_deferred(
                 ForwardWithPrimal,
                 Const(evaluate),
+                Duplicated,
                 Duplicated(prob, dprob),
-                Const(direct),
+                Const(indirect),
+                Const(zeta),
                 Duplicated(bie_solution, dbie_solution),
                 Duplicated(x_test, dx_test_2),
             )

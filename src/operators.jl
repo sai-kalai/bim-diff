@@ -19,9 +19,10 @@ function Base.:-(s::Number, op::IntegralOperator)
 end
 
 
-# function Base.:*(op::IntegralOperator, v::AbstractArray)
-#     return matrix(op) * v
-# end
+function Base.:*(op::IntegralOperator, v::AbstractArray)
+    return matrix(op) * v
+end
+
 #
 # function Base.:+(op::IntegralOperator, v::AbstractArray)
 #     return matrix(op) + v
@@ -51,7 +52,7 @@ struct SingleLayer{
 end
 
 # TODO: fix undef allocator
-default_allocator = (_m, _n) -> zeros(_m, _n)
+default_allocator = (_m, _n) -> CUDA.fill(0., _m, _n)
 
 # source-target interaction
 function SingleLayer(
@@ -60,11 +61,14 @@ function SingleLayer(
     target::AbstractMatrix; # target points to compute operator
     matrix_factory::Function=default_allocator,
 )
+    @show "single", typeof(source.w)
     mat = compute_laplace_slp_matrix(
         target,
         source.x;
         matrix_factory=matrix_factory
     ) .* source.w'
+
+
     return SingleLayer(equation, nothing, mat)
 end
 
@@ -79,7 +83,7 @@ function SingleLayer(
         source.x,
         source.w,
         correction.order;
-        matrix_factory
+        matrix_factory=matrix_factory
     ) .* source.w'
     return SingleLayer(equation, correction, mat)
 
@@ -101,14 +105,21 @@ function DoubleLayer(
     target::AbstractMatrix; # target points to compute operator
     matrix_factory::Function=default_allocator,
 )
-    mat = compute_laplace_dlp_matrix(
+
+
+    mat1 = compute_laplace_dlp_matrix(
         target,
         source.x,
         source.n;
         matrix_factory=matrix_factory,
-    ) .* source.w'
+    )
 
-    return DoubleLayer(equation, mat)
+    @show "double", typeof(source.w), typeof(mat1)
+
+    mat2 = mat1 .* source.w'
+
+
+    return DoubleLayer(equation, mat2)
 
 end
 
@@ -250,10 +261,22 @@ function compute_laplace_slp_matrix(
     # shape of kernel matters though, e.g. apply operator to function acting on source/target points? in this case, function acts on the boundary (source points)
     # but to compute solution at arbitrary points, we are talking about m "target" points
     # so kernel is nxm and is applied to m x ...
+
     m, dim_x = size(x)
     n, dim_y = size(y)
-
     mat = matrix_factory(m, n)
+
+    compute_laplace_slp_matrix!(x, y, mat)
+
+    return mat
+end
+
+function compute_laplace_slp_matrix!(
+    x, # list of x points (targets)
+    y, # list of y points (source, integration variable)
+    mat::Matrix,
+)
+    m, n = size(mat)
 
     for i in 1:m, j in 1:n
         r = make_svector2(x, i) - make_svector2(y, j)
@@ -262,8 +285,41 @@ function compute_laplace_slp_matrix(
             dot(r, r)
         )
     end
-    return mat
+    return nothing
 end
+
+function slp_laplace_gpu_kernel!(mat, x, y)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+
+    if i <= size(mat, 1) && j <= size(mat, 2)
+        r = make_svector2(x, i) - make_svector2(y, j)
+
+        @inbounds mat[i, j] = kernel(
+            SingleLayer{Laplace},
+            dot(r, r),
+        )
+    end
+
+    return
+
+end
+function compute_laplace_slp_matrix!(
+    x, # list of x points (targets)
+    y, # list of y points (source, integration variable)
+    mat::CuArray,
+    threads=(16, 16)
+)
+
+    blocks = (cld(size(mat, 1), threads[1]),
+        cld(size(mat, 2), threads[2]),
+    )
+
+    @cuda threads=threads blocks=blocks slp_laplace_gpu_kernel!(mat, x, y)
+
+    return nothing
+end
+
 
 function compute_laplace_slp_matrix(
     y::AbstractMatrix, # list of x points (targets), matrix
@@ -324,6 +380,21 @@ function compute_laplace_dlp_matrix(
 
     mat = matrix_factory(m, n)
 
+
+    compute_laplace_dlp_matrix!(x, y, ny, mat)
+    return mat
+end
+
+
+function compute_laplace_dlp_matrix!(
+    x::AbstractMatrix,
+    y::AbstractMatrix,
+    ny::AbstractMatrix, # unitary normals at source
+    mat::Matrix,
+)
+
+    m, n = size(mat)
+
     @inbounds for i in 1:m, j in 1:n
 
         r = make_svector2(x, i) - make_svector2(y, j)
@@ -338,6 +409,47 @@ function compute_laplace_dlp_matrix(
     return mat
 end
 
+function compute_laplace_dlp_matrix!(
+    x::AbstractMatrix,
+    y::AbstractMatrix,
+    ny::AbstractMatrix, # unitary normals at source
+    mat::CuArray,
+    threads=(16, 16)
+)
+
+    blocks = (cld(size(mat, 1), threads[1]),
+        cld(size(mat, 2), threads[2]),
+    )
+
+    @show "hehex"
+
+    @cuda threads=threads blocks=blocks dlp_laplace_gpu_kernel!(mat, x, y, ny)
+
+    @show "hoho"
+
+    return nothing
+end
+
+function dlp_laplace_gpu_kernel!(mat, x, y, ny)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+
+    if i <= size(mat, 1) && j <= size(mat, 2)
+        r = make_svector2(x, i) - make_svector2(y, j)
+        nyj = make_svector2(ny, j)
+
+        # @cuprintf("%d %d", i, j)
+
+        @inbounds mat[i, j] = kernel(
+            DoubleLayer{Laplace},
+            dot(r, r),
+            dot(r, nyj),
+        )
+        # @cuprintf("%d %d", i, j)
+    end
+    return nothing
+end
+
 # self interaction
 function compute_laplace_dlp_matrix(
     y::AbstractMatrix,
@@ -350,6 +462,18 @@ function compute_laplace_dlp_matrix(
 
     mat = matrix_factory(n, n)
 
+
+    compute_laplace_dlp_matrix!(y, ny, curvatures, mat)
+
+    return mat
+end
+
+function compute_laplace_dlp_matrix!(
+    y::AbstractMatrix,
+    ny::AbstractMatrix, # unitary normals at source
+    curvatures::AbstractVector,
+    mat::Matrix,
+)
     @inbounds for i in 1:n
 
         mat[i, i] = -0.25 / pi * curvatures[i]
@@ -369,7 +493,48 @@ function compute_laplace_dlp_matrix(
         end
 
     end
-    return mat
+    return nothing
+end
+
+function compute_laplace_dlp_matrix!(
+    y::AbstractMatrix,
+    ny::AbstractMatrix, # unitary normals at source
+    curvatures::AbstractVector,
+    mat::CuArray,
+    threads=(16, 16)
+)
+
+    blocks = (cld(size(mat, 1), threads[1]),
+        cld(size(mat, 2), threads[2]),
+    )
+
+    @cuda threads=threads blocks=blocks dlp_laplace_gpu_kernel!(mat, y, ny, curvatures)
+
+    return nothing
+end
+
+function dlp_laplace_gpu_kernel!(mat, y, ny, curvatures::AbstractVector)
+    i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    j = (blockIdx().y - 1) * blockDim().y + threadIdx().y
+
+    n = size(mat, 1)
+
+    if i <= n && j <= n
+        if i == j
+            mat[i, j] = -0.25 / π * curvatures[i]
+        else
+            r = make_svector2(y, i) - make_svector2(y, j)
+            nxj = make_svector2(ny, j)
+
+            mat[i, j] = kernel(
+                DoubleLayer{Laplace},
+                dot(r, r),
+                dot(r, nxj),
+            )
+        end
+    end
+
+    return nothing
 end
 
 
