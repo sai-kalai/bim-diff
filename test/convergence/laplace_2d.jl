@@ -21,11 +21,11 @@ using Enzyme
 
 import Adapt
 
-
+using GLMakie
 
 using LinearAlgebra
 
-using BimDiff
+using BoundaryIntegralEquations
 
 
 
@@ -255,7 +255,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
     density_source = Adapt.adapt(CuArray, density_source)
 
-    n_source = size(x_source, 1)
+    n_source = size(x_source, 2)
 
     Γ_source = Adapt.adapt(CuArray, make_dummy_curve(x_source))
 
@@ -268,7 +268,8 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     # @assert norm(u_exact - u_exact_reference) < 1e-15
     # @test u_exact ≈ u_exact_reference atol=1e-15
 
-    x_test = Adapt.adapt(CuArray, [x_test; ball(0.1, 10); ball(0.3, 30); ball(0.6, 60); Matrix(stack((t) -> starfish(t, 0.9), 0:0.1:2pi))'])
+    x_test = [x_test;; ball(0.1, 10);; ball(0.3, 30);; ball(0.6, 60);; stack((t) -> starfish(t, 0.9), 0:0.1:2pi)]
+    x_test = Adapt.adapt(CuArray, x_test)
 
     # scatter!(ax, x_test[:, 1], x_test[:, 2], color=u_exact)
 
@@ -287,16 +288,13 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         @show typeof(Γ)
         @show typeof(Γ.x)
 
-        # fig, ax = visualize(Γ)
 
         # target: domain boundary, source: manufactured solution point sources
         S_source = SingleLayer(laplace, Γ_source, Γ.x; matrix_factory=allocator)
         # D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x, Γ.n; matrix_factory=allocator)
 
-
         σ = S_source * density_source # Dirichlet BC
         # τ_exact = D_star_source * density_source # Neumann BC exact solution
-
 
 
         # S = SingleLayer(laplace, Γ, kapur_rokhlin; matrix_factory=allocator)
@@ -331,6 +329,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
         # @time u, τ = s(x_test)
 
+
         prob = BoundaryValueProblem(
             laplace,
             Dirichlet(σ),
@@ -355,8 +354,8 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
             dbie_solution = Enzyme.make_zero(bie_solution)
 
-            dx_test_1[:, 1] .= 1.;
-            dx_test_2[:, 2] .= 1.;
+            dx_test_1[1, :] .= 1.;
+            dx_test_2[2, :] .= 1.;
 
             f1, _ = autodiff_deferred(
                 ForwardWithPrimal,
@@ -380,12 +379,10 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
                 Duplicated(x_test, dx_test_2),
             )
 
-            g4 = [collect(f1[1][1]);; collect(f2[1][1])]
+            g4 = [collect(f1[1][1])'; collect(f2[1][1])']
+
 
         end
-
-        @show size(Γ)
-        @show size(x_test)
 
         exact_gradient = solution_derivative(
             direct,
@@ -409,11 +406,10 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         #
         # @test g2 ≈ g3
 
-        # scatter!(ax, x_test[:, 1], x_test[:, 2]; color=u, markersize=20)
-        # arrows2d!(ax, x_test[:, 1], x_test[:, 2], g2[:, 1], g2[:, 2]; lengthscale=0.1)
-        # wait(display(fig))
-
-
+        fig, ax = visualize(Γ)
+        scatter!(ax, x_test[1, :], x_test[2, :]; color=u, markersize=20)
+        arrows2d!(ax, x_test[1, :], x_test[2, :], g4[1, :], g4[2, :]; lengthscale=0.1)
+        wait(display(fig))
         break
 
         # push!(
@@ -577,6 +573,5 @@ end
 
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    using GLMakie
     wait(display(plot_errors(convergence_study())))
 end

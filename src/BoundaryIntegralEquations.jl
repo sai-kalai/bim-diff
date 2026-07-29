@@ -1,4 +1,4 @@
-module BimDiff
+module BoundaryIntegralEquations
 
 
 
@@ -12,11 +12,14 @@ using LinearSolve
 using CUDA
 import Adapt
 
+using PolygonOps
+using NearestNeighbors
 
 #
 # type definitions
 #
 abstract type IntegralOperator end
+
 
 
 # TODO: bvp should already be aware of not only the pde, but also type of bc, side of domain
@@ -69,6 +72,7 @@ include("solvers.jl")
 include("close_evaluation.jl")
 
 include("utils.jl")
+include("close_evaluation.jl")
 
 #
 # exports
@@ -83,9 +87,9 @@ export IntegralOperator, SingleLayer, DoubleLayer, AdjointDoubleLayer, Hypersing
 export Approach, Direct, Indirect
 export BoundaryCondition, Dirichlet, Neumann
 export kernel
-export cauchy_integral, compute_boundary_limit
 export compute_laplace_slp_matrix, compute_laplace_dlp_adjoint_matrix
 export AbstractBoundaryDensity, BoundaryDensity, BoundaryCondition, Dirichlet, Neumann, data
+export cauchy_integral, holomorphism_boundary_limit
 
 export kernel
 export BoundaryValueProblem, solve, evaluate, solve_and_evaluate
@@ -99,18 +103,27 @@ export solution_derivative
 
 
 
+
+function visualize()
+    error("No GLMakie detected, please import it before calling")
+end
+
+
+
 # trick lsp
 @static if false
     include("../scripts/main.jl")
     include("../scripts/precomputed_coeffs.jl")
+    include("../scripts/ellipse.jl")
 
     include("../scripts/ellipse.jl")
 
     include("../test/quick_test.jl")
     include("../test/convergence/laplace_2d.jl")
-    include("../test/test_operators.jl")
+    include("../test/operators.jl")
+    include("../test/close_evaluation.jl")
 
 
 end
 
-end # module BimDiff
+end # module BoundaryIntegralEquations

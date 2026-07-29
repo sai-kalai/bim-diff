@@ -1,9 +1,9 @@
 
 # Extension package for enzyme automatic differentiation
 #
-module BimDiffEnzymeExt
+module BoundaryIntegralEquationsEnzymeExt
 
-using BimDiff
+using BoundaryIntegralEquations
 using Enzyme
 
 # NOTE: further derivatives are needed for faster optimization algs
@@ -15,7 +15,7 @@ compute the gradient of the solution of a boundary value problem with respect to
 physical space
 
 """
-function BimDiff.spatial_gradient(
+function BoundaryIntegralEquations.spatial_gradient(
     mode::Enzyme.ForwardMode,
     problem::BoundaryValueProblem,
     target::AbstractMatrix,
@@ -28,9 +28,8 @@ function BimDiff.spatial_gradient(
     dx = Enzyme.make_zero(target)
     dy = Enzyme.make_zero(target)
 
-    dx[:, 1] .= 1.;
-    dy[:, 2] .= 1.;
-
+    dx[1, :] .= 1.;
+    dy[2, :] .= 1.;
 
 
     fwd1 = autodiff(
@@ -53,12 +52,12 @@ function BimDiff.spatial_gradient(
 
 
 
-    return [collect(fwd1[1][1]);; collect(fwd2[1][1])]
+    return [collect(fwd1[1][1]); collect(fwd2[1][1])]
 
 
 end
 
-function BimDiff.spatial_gradient(
+function BoundaryIntegralEquations.spatial_gradient(
     mode::Enzyme.ReverseMode,
     problem::BoundaryValueProblem,
     target::AbstractMatrix,
