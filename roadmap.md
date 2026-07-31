@@ -25,7 +25,7 @@ Try to make one branch for each
 - [x] design better api instead of passing allocator function. maybe, pass already allocated memory
     - [x] adopt api in separate matrices branch, such that testing is homogeneous
     - [x] fix undef initializer in separate matrices branch
-    - [ ] homogenize interface further so that the only difference is a boolean flag `compute matrices`
+    - [x] homogenize interface further so that the only difference is a boolean flag `compute matrices`
 
 - [x] api for solving the BIE attached to the BVP and reusing the density for computing at arbitrary points
     struct containing side, bc type,
@@ -41,8 +41,9 @@ Try to make one branch for each
 - [ ] implement SciML style solution for BIE and BVP
 
 - [x] implement GPU kernel assembly and linear solve
-- [ ] extend GPU module, match on type of array, support several backends
-- [ ] integrate GPU and AD into main branch
+- [ ] extend GPU module, match on type of array, support several backends, investigate KernelAbstractions
+- [ ] integrate GPU and
+- [ ] AD into main branch
 
 - extend functionality
     - [ ] exterior problem
