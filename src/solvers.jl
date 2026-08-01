@@ -16,20 +16,15 @@ struct BoundaryValueProblem{
     boundary::B
 end
 
+# TODO: instead, overload commonsolve
+function solve_linear_system(A, b; algorithm=nothing)
+    pbm = LinearSolve.LinearProblem(A, b)
+    sln = LinearSolve.solve(pbm, algorithm)
+    return sln.u
+end
+
 abstract type EvaluationDistance end
-@doc raw"""
-    NearEvaluation
-
-Near-boundary evaluation, using cauchy_integral and holomorphism_boundary_limit
-
-"""
 struct NearEvaluation end
-@doc raw"""
-    FarEvaluation
-
-Far from boundary evaluation, solved using conventional single- and double-layer potentials
-
-"""
 struct FarEvaluation end
 
 
@@ -60,7 +55,7 @@ function solve(
 )::Neumann
     # TODO: work in place to avoid allocating a new matrix
     A = -0.5 + D_star # TODO: replace \ by LinearSolve
-    τ = A \ (H * problem.bc)
+    τ = solve_linear_system(A, (H * problem.bc))
     return Neumann(τ) # this is actually already the unknown Neumann data
 end
 
@@ -89,7 +84,6 @@ function solve(
 
     return solve(problem, approach, D_star, H)
 end
-
 
 # given operators
 @doc raw"""
@@ -156,6 +150,7 @@ function solve_and_evaluate(
 end
 
 
+
 # compute operators
 function solve_and_evaluate(
     problem::BoundaryValueProblem{Laplace,Dirichlet,Interior,<:DiscreteClosedCurve},
@@ -180,8 +175,7 @@ function solve(
     D::DoubleLayer
 )::BoundaryDensity
 
-    φ = (-0.5 + D) \ problem.bc.σ
-
+    φ = solve_linear_system(-0.5 + D, problem.bc.σ)
     return BoundaryDensity(φ)
 end
 
@@ -404,22 +398,26 @@ function solve(
     S::SingleLayer,
     D::DoubleLayer,
 )::Dirichlet
-    # NOTE: ???????????????????????????????????????? this became singular after col-major change
-    σ = Dirichlet(pinv(0.5 + D) * (S * problem.bc))
-    return σ
-end
 
 # compute operators
 @doc raw"""
     solve(problem::BoundaryValueProblem{Laplace,Neumann,Interior,<:DiscreteClosedCurve}, approach::Direct, correction::SingularCorrection, ;, matrix_factory::Function=default_allocator)
 
 solve the BIE associated to a BVP by the direct approach, internally computing operators
+    σ = solve_linear_system((0.5 + D), (S * problem.bc))
 
 # Arguments
 - `problem::BoundaryValueProblem{Laplace,Neumann,Interior,<:DiscreteClosedCurve}`: BVP associated to the BIE
 - `approach::Direct`: the direct approach
 - `correction::SingularCorrection`: how to handle singular integrals
 """
+    return Dirichlet(σ)
+
+    # NOTE: ???????????????????????????????????????? became singular after colmajor
+
+end
+
+# compute operators
 function solve(
     problem::BoundaryValueProblem{Laplace,Neumann,Interior,<:DiscreteClosedCurve},
     approach::Direct,
@@ -458,7 +456,6 @@ function evaluate(
     u = S_target * problem.bc - D_target * σ
     return u, σ
 end
-
 
 # compute operators
 @doc raw"""
@@ -512,6 +509,7 @@ function solve_and_evaluate(
     matrix_factory::Function=default_allocator
 )::Tuple{AbstractVector,Dirichlet}
 
+
     density = solve(problem, approach, correction; matrix_factory=matrix_factory)
     u, σ = evaluate(problem, approach, density, target; matrix_factory=matrix_factory)
 
@@ -530,7 +528,7 @@ function solve(
     D_star,
 )::BoundaryDensity
 
-    ψ = (0.5 + D_star) \ problem.bc.τ
+    ψ = solve_linear_system((0.5 + D_star), problem.bc.τ)
 
     return BoundaryDensity(ψ)
 end
@@ -594,6 +592,7 @@ function solve_and_evaluate(
     u, σ = evaluate(problem, approach, density, S, S_target)
     return u, σ
 end
+
 
 # compute operators
 function solve_and_evaluate(
