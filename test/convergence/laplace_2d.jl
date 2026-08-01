@@ -369,9 +369,28 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
                 Duplicated(x_test, dx_test_2),
             )
 
+
+
+
             g4 = [collect(f1[1][1])'; collect(f2[1][1])']
 
 
+        end
+
+
+        @time begin
+            jac = jacobian(
+                set_runtime_activity(ReverseWithPrimal),
+                x -> evaluate(
+                    prob,
+                    direct,
+                    bie_solution,
+                    x
+                )[1],
+                x_test,
+            )
+
+            @show jac
         end
 
         exact_gradient = solution_derivative(

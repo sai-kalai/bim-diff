@@ -9,7 +9,6 @@ using LinearAlgebra
 using StaticArrays
 using FFTW
 using LinearSolve
-
 using PolygonOps
 using NearestNeighbors
 
@@ -53,11 +52,9 @@ struct Indirect <: Approach end
 
 
 function spatial_gradient end
-function visualize()
-    error("Import GLMakie before calling")
-end
 
-#
+
+
 # includes
 #
 include("finite_differences.jl")
@@ -68,9 +65,7 @@ include("operators.jl")
 include("kernels.jl")
 include("solvers.jl")
 include("close_evaluation.jl")
-
 include("utils.jl")
-include("close_evaluation.jl")
 
 #
 # exports
