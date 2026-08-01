@@ -10,6 +10,7 @@ using StaticArrays
 using FFTW
 using PolygonOps
 using NearestNeighbors
+using LinearSolve
 
 #
 # type definitions

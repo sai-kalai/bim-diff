@@ -399,18 +399,7 @@ function solve(
     D::DoubleLayer,
 )::Dirichlet
 
-# compute operators
-@doc raw"""
-    solve(problem::BoundaryValueProblem{Laplace,Neumann,Interior,<:DiscreteClosedCurve}, approach::Direct, correction::SingularCorrection, ;, matrix_factory::Function=default_allocator)
-
-solve the BIE associated to a BVP by the direct approach, internally computing operators
     σ = solve_linear_system((0.5 + D), (S * problem.bc))
-
-# Arguments
-- `problem::BoundaryValueProblem{Laplace,Neumann,Interior,<:DiscreteClosedCurve}`: BVP associated to the BIE
-- `approach::Direct`: the direct approach
-- `correction::SingularCorrection`: how to handle singular integrals
-"""
     return Dirichlet(σ)
 
     # NOTE: ???????????????????????????????????????? became singular after colmajor
