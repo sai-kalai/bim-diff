@@ -79,7 +79,7 @@ export cauchy_integral, holomorphism_boundary_limit
 
 export kernel
 export populate_matrices!
-export BoundaryValueProblem, solve, evaluate, solve_and_evaluate
+export BoundaryValueProblem, solve_bie, solve, solve_and_evaluate
 
 export starfish, ball
 

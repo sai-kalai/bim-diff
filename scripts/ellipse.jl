@@ -117,14 +117,14 @@ function main()
             BoundaryValueProblem(laplace, Dirichlet(sin.(θ)), interior, Γ),
         ]
 
-        phis = solve.(
+        phis = solve_bie.(
             pbs,
             Ref(indirect),
             Ref(D),
         )
 
 
-        solns = evaluate.(
+        solns = solve.(
             pbs,
             Ref(indirect),
             Ref(sidi),
