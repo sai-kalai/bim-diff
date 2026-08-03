@@ -15,9 +15,7 @@ function cauchy_integral(
     target::AbstractMatrix,
     boundary_data::AbstractVector,
 )
-    @show size(source.x)
-    @show size(target), typeof(target)
-    @show size(boundary_data), typeof(boundary_data)
+
 
     m = size(target, 2)
     n = size(source.x, 2)

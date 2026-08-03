@@ -62,8 +62,6 @@ function main()
         eachcol(x_test_all);
         dims=2
     )
-
-
     xi_eta_exact_boundary = stack(
         (t) -> exact_solution(t, x0, y0, a, b, γ),
         eachcol(boundary_grid);
@@ -98,8 +96,8 @@ function main()
             for col in axes(x_test_all, 2)
         ]
 
-        x_test = x_test_all[:, mask]
-        xi_eta_exact = xi_eta_exact_all[:, mask]
+        x_test = x_test_all
+        xi_eta_exact = xi_eta_exact_all
 
         D = DoubleLayer(laplace, Γ)
         S = SingleLayer(laplace, Γ, KapurRokhlin(ord))
@@ -149,28 +147,18 @@ function main()
         @show n, errs[i]
 
         fig, ax = visualize(Γ)
-
         scatter_kwargs = (;
             colorscale=log10,
             color=e_norm,
             markersize=15,
             colormap=:viridis,
         )
-
-
         sc1 = scatter!(ax, x_test[1, :], x_test[2, :]; scatter_kwargs...)
-
         arr = arrows2d!(ax, x_test[1, :], x_test[2, :], e[1, :], e[2, :]; lengthscale=0.1)
-
         ax2 = Axis(fig[1, 2]; aspect=DataAspect(), title="n = $n")
-
         lines!(ax2, xi_eta_exact_boundary[1, :], xi_eta_exact_boundary[2, :]; color=:black)
-
-
         sc2 = scatter!(ax2, xi_eta_exact[1, :], xi_eta_exact[2, :]; scatter_kwargs...)
-
         Colorbar(fig[1, 2][1, 3], sc2; label="log10 error inf norm")
-
         wait(display(fig))
     end
 

@@ -62,6 +62,7 @@ include("kernels.jl")
 include("solvers.jl")
 include("utils.jl")
 include("close_evaluation.jl")
+include("map2disc.jl")
 
 #
 # exports
@@ -82,6 +83,8 @@ export populate_matrices!
 export BoundaryValueProblem, solve, evaluate, solve_and_evaluate
 
 export starfish, ball
+
+export map2disc
 
 function visualize end
 
