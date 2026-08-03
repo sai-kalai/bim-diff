@@ -7,10 +7,11 @@ module BoundaryIntegralEquations
 #
 using LinearAlgebra
 using StaticArrays
-using FFTW
+using FFTA
 using PolygonOps
 using NearestNeighbors
 using LinearSolve
+using Enzyme
 
 #
 # type definitions
@@ -78,13 +79,13 @@ export Approach, Direct, Indirect
 export BoundaryDensity, BoundaryCondition, Dirichlet, Neumann, data
 export cauchy_integral, holomorphism_boundary_limit
 
-export kernel
+export kernel, solution_derivative
 export populate_matrices!
 export BoundaryValueProblem, solve, evaluate, solve_and_evaluate
 
 export starfish, ball
 
-export map2disc
+export map2disc, map2disc_with_jacobian
 
 function visualize end
 
@@ -99,6 +100,7 @@ function visualize end
     include("../test/convergence/laplace_2d.jl")
     include("../test/operators.jl")
     include("../test/close_evaluation.jl")
+    include("../test/map2disc_ellipse.jl")
 
     # does not work
     include.(filter(contains(r".jl$"), readdir("../test/"; join=true)))
