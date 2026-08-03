@@ -1,5 +1,3 @@
-
-
 """
     cauchy_integral(target, source::DiscreteClosedCurve, boundary_data)
 
@@ -34,6 +32,7 @@ function cauchy_integral(
 
         for j in 1:n
 
+
             # TODO: replace with NN
             if y[j] == x[k]
                 v[k] = boundary_data[j]
@@ -50,6 +49,7 @@ function cauchy_integral(
             v[k] = num / den
         end
     end
+
     return conj(v) # NOTE: found out 25/07 that imag part has sign flipped
 end
 
@@ -121,6 +121,7 @@ function holomorphism_boundary_limit(
         res = zero(ComplexF64)
 
         for j in Iterators.flatten((1:(k-1), (k+1):n))
+
             res += (φ[j] - φ[k]) / (y[j] - y[k]) * problem.boundary.cw[j]
         end
         v_lim[k] = -φ[k] - φ_prime[k]/(im * n) + res * im / 2pi
@@ -139,6 +140,7 @@ end
 - `bc::BoundaryCondition`: [TODO:description]
 - `source::DiscreteClosedCurve`: [TODO:description]
 """
+
 function holomorphism_boundary_limit(
     ::Exterior,
     op::DoubleLayer{Laplace},
@@ -150,6 +152,7 @@ function holomorphism_boundary_limit(
 
 end
 
+
 function holomorphism_boundary_limit(
     ::Interior,
     op::SingleLayer{Laplace},
@@ -160,6 +163,7 @@ function holomorphism_boundary_limit(
     error("not implemented")
 
 end
+
 
 function holomorphism_boundary_limit(
     ::Exterior,

@@ -30,4 +30,7 @@ Manifest*.toml
 LocalPreferences.toml
 JuliaLocalPreferences.toml
 
+test/logs/
+
+
 logs/

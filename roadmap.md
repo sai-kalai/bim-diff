@@ -20,6 +20,7 @@ Try to make one branch for each
 
 - [ ] rename hypersingular corrections: both "Sidi" and "Zeta" are of type Zeta
 
+
 - [ ] implement 2nd derivative approximation for hypersingular kernel using AD
 
 - [x] design better api instead of passing allocator function. maybe, pass already allocated memory
@@ -64,6 +65,7 @@ Backlog/ideas
     - target points: only locations
     - dummy boundary: unit weights, for producing manufactured solution results
     - target points with unit normals: for adjoint dlp, where normals at x are needed
+
     - may be better to use an external package for managing geometry
 - [ ] array of structures instead of structure of arrays
     implement homogeneous api, and test performance
@@ -92,6 +94,7 @@ Meeting with Dean
 
 - JOSS maybe publication
 - Andreas Buchheit
+
 
 
 # TIL

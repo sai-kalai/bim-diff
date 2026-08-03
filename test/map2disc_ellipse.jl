@@ -8,6 +8,7 @@ using PolygonOps
 using GLMakie
 
 
+
 using BoundaryIntegralEquations
 
 
@@ -44,6 +45,7 @@ function main(viz=false)
         return SA[xi/a, eta/b]
     end
 
+
     n_grid = 30
     θ_grid = range(0, 2π; length=n_grid + 1)[1:(end-1)]
 
@@ -55,6 +57,7 @@ function main(viz=false)
     xs = range(xmin, xmax, length=n_grid)
     ys = range(ymin, ymax, length=n_grid)
 
+
     x_test_all = stack(((x, y),) -> SA[x, y], Iterators.product(xs, ys); dims=2)
 
     xi_eta_exact_all = stack(
@@ -63,8 +66,7 @@ function main(viz=false)
         dims=2
     )
     xi_eta_exact_boundary = stack(
-        (t) -> exact_solution(t, x0, y0, a, b, γ),
-        eachcol(boundary_grid);
+        (t) -> exact_solution(t, x0, y0, a, b, γ), eachcol(boundary_grid);
         dims=2
     )
 
@@ -80,6 +82,7 @@ function main(viz=false)
     sidi = Sidi()
     indirect = Indirect()
 
+
     for (i, n) in enumerate(n_vals)
 
         # Define boundary
@@ -88,6 +91,7 @@ function main(viz=false)
 
 
         # check which points are inside
+
         poly = [[col[1], col[2]] for col in eachcol(Γ.x)]
         push!(poly, Γ.x[:, 1])
 
@@ -134,7 +138,7 @@ function main(viz=false)
         e_norm = norm.(eachcol(e), 2) .+ eps(Float64)
 
         # 1x1
-        errs[i] = maximum(e_norm )
+        errs[i] = maximum(e_norm)
 
         @show n, errs[i], minimum(jac_err_norm)
         if viz
@@ -167,6 +171,7 @@ function main(viz=false)
     # wait(display(fig3))
 
 end
+
 
 
 if abspath(PROGRAM_FILE) == @__FILE__

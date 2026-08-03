@@ -5,6 +5,7 @@
 # approach to BIE:
 #      	int Laplace ansatz: u = S*(du/dn) - D*u
 #       int Calder?n projection:     u =  (1/2-D)*u  +         S*(du/dn)
+using LinearAlgebra: exactdiv
 #                                du/dn =       -T*u  + (1/2+D^*)*(du/dn)
 #      	ext Laplace ansatz: u = D*u - S*(du/dn) + omega
 #       ext Calder?n projection:     u =  (1/2+D)*u  -         S*(du/dn)
@@ -15,6 +16,8 @@
 using Test
 using Revise
 
+using Enzyme
+
 using GLMakie
 
 
@@ -23,11 +26,11 @@ using LinearAlgebra
 using BoundaryIntegralEquations
 
 
+
 include("../fixtures.jl")
 
 abstract type Solution end
 abstract type NumericalSolution{S,A} end
-
 
 
 mutable struct DirichletSolution{S<:DomainSide,A<:Approach,C<:HypersingularCorrection} <: NumericalSolution{S,A}
@@ -241,7 +244,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     indirect = Indirect()
 
     # indicate how to reserve memory
-    allocator = (_m, _n) -> Matrix{Float64}(undef, _m, _n)
+    allocator = (_m, _n) -> zeros(_m, _n)
 
     x_test = test_locations()
 
@@ -252,6 +255,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
     n_source = size(x_source, 2)
 
+
     Γ_source = make_dummy_curve(x_source)
 
     S_manuf = SingleLayer(laplace, Γ_source, x_test; matrix_factory=allocator, populate_matrix=true)
@@ -260,14 +264,17 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     u_exact = S_manuf * density_source # exact solution at test points
     u_exact_reference = reference_exact_solution()
 
-    @test norm(u_exact - u_exact_reference) < 1e-15
+    # @assert norm(u_exact - u_exact_reference) < 1e-15
+    @test u_exact ≈ u_exact_reference atol=1e-15
+
+    x_test = [x_test;; ball(0.1, 10);; ball(0.3, 30);; ball(0.6, 60);; stack((t) -> starfish(t, 0.9), 0:0.1:2pi)]
+
 
     # scatter!(ax, x_test[:, 1], x_test[:, 2], color=u_exact)
 
-    # wait(display(fig))
-
     # println("Printing max-norm errors")
     # println("Interior")
+
 
     num_solutions = Vector{NumericalSolution}()
 
@@ -276,65 +283,155 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         Γ = DiscreteClosedCurve(n, starfish) # boundary of the domain
 
 
-
-        # fig = visualize(Γ)
-        # wait(display(fig))
-        # break
-
         # target: domain boundary, source: manufactured solution point sources
-        S_source = SingleLayer(laplace, Γ_source, Γ.x) # ok
-        D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x) # ok
-        populate_matrices!(Γ_source, Γ.x, S_source, D_star_source; target_normals=Γ.n)
-
-
-        # TODO: test this
-        # @assert D_star_source.matrix ≈ AdjointDoubleLayer(laplace, Γ.x, Γ.n, Γ_source; matrix_factory=allocator).matrix
+        S_source = SingleLayer(laplace, Γ_source, Γ.x; matrix_factory=allocator)
+        D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x, Γ.n; matrix_factory=allocator)
 
         σ = S_source * density_source # Dirichlet BC
         τ_exact = D_star_source * density_source # Neumann BC exact solution
 
 
-        S = SingleLayer(laplace, Γ, kapur_rokhlin,) # ok
-        D = DoubleLayer(laplace, Γ,) # ok
-        D_star = AdjointDoubleLayer(laplace, Γ,)  # ok
-        H_zeta = Hypersingular(laplace, Γ, zeta,) # ok
-        H_sidi = Hypersingular(laplace, Γ, sidi,) # ok
-        populate_matrices!(Γ, S, D, D_star, H_sidi, H_zeta)
+        S = SingleLayer(laplace, Γ, kapur_rokhlin)
+        D = DoubleLayer(laplace, Γ)
+        D_star = AdjointDoubleLayer(laplace, Γ)
+        H_zeta = Hypersingular(laplace, Γ, zeta)
+        H_sidi = Hypersingular(laplace, Γ, sidi)
 
-        S_target = SingleLayer(laplace, Γ, x_test) # ok
-        D_target = DoubleLayer(laplace, Γ, x_test) # ok
-        populate_matrices!(Γ, x_test, S_target, D_target)
-
-        # display(S_target.matrix)
-        # display(D_target.matrix)
-        # break
+        S_target = SingleLayer(laplace, Γ, x_test,)
+        D_target = DoubleLayer(laplace, Γ, x_test,)
 
         # Dirichlet Zeta Direct
 
-        u, τ = solve_and_evaluate(
-            BoundaryValueProblem(
+        s = (x) -> begin
+            bc = Dirichlet(σ)
+            pb = BoundaryValueProblem(
                 laplace,
-                Dirichlet(σ),
+                bc,
                 interior,
                 Γ
-            ),
-            direct,
-            D_star,
-            H_zeta,
-            S_target,
-            D_target,
-        )
-        push!(
-            num_solutions,
-            DirichletSolution{Interior,Direct,Zeta}(
-                n,
-                u,
-                τ,
-                zeta,
-                norm(u_exact - u, Inf),
-                norm(τ_exact - τ, Inf)
             )
+
+            return solve_and_evaluate(
+                pb,
+                Indirect(),
+                Sidi(),
+                x,
+            )
+        end
+
+
+
+        @time u, τ = s(x_test)
+
+        prob = BoundaryValueProblem(
+            laplace,
+            Dirichlet(σ),
+            interior,
+            Γ
         )
+
+
+        bie_solution = solve(prob, direct, D_star, H_zeta)
+
+        # primal run of solution evaluation
+        bvp_solution = evaluate(prob, direct, bie_solution, x_test)
+
+
+
+        # diff of only evaluation of solution
+
+        @time begin
+
+            dx_test_1 = Enzyme.make_zero(x_test)
+            dx_test_2 = Enzyme.make_zero(x_test)
+            dprob = Enzyme.make_zero(prob)
+
+            dbie_solution = Enzyme.make_zero(bie_solution)
+
+            dx_test_1[1, :] .= 1.;
+            dx_test_2[2, :] .= 1.;
+
+            f1 = autodiff(
+                ForwardWithPrimal,
+                Const(evaluate),
+                Duplicated(prob, dprob),
+                Const(direct),
+                Duplicated(bie_solution, dbie_solution),
+                Duplicated(x_test, dx_test_1),
+            )
+
+            f2 = autodiff(
+                ForwardWithPrimal,
+                Const(evaluate),
+                Duplicated(prob, dprob),
+                Const(direct),
+                Duplicated(bie_solution, dbie_solution),
+                Duplicated(x_test, dx_test_2),
+            )
+
+
+
+
+            g4 = [collect(f1[1][1])'; collect(f2[1][1])']
+
+
+        end
+
+
+        @time begin
+            jac = jacobian(
+                set_runtime_activity(ReverseWithPrimal),
+                x -> evaluate(
+                    prob,
+                    direct,
+                    bie_solution,
+                    x
+                )[1],
+                x_test,
+            )
+
+            @show jac
+        end
+
+        exact_gradient = solution_derivative(
+            direct,
+            x_test,
+            Γ.x,
+            Γ.n,
+            Γ.w,
+            data(τ),
+            σ,
+        )
+
+        @test g4 ≈ exact_gradient atol=1e-5
+
+        # @time begin
+        #     g2 = spatial_gradient(Forward, prob, x_test, indirect, zeta)
+        # end
+        #
+        # @time begin
+        #     g3 = spatial_gradient(Enzyme.Reverse, prob, x_test, indirect, zeta)
+        # end
+        #
+        # @test g2 ≈ g3
+
+        fig, ax = visualize(Γ)
+        scatter!(ax, x_test[1, :], x_test[2, :]; color=u, markersize=20)
+        arrows2d!(ax, x_test[1, :], x_test[2, :], g4[1, :], g4[2, :]; lengthscale=0.1)
+        wait(display(fig))
+        break
+
+        # push!(
+        #     num_solutions,
+        #     DirichletSolution{Interior,Direct,Zeta}(
+        #         n,
+        #         u,
+        #         τ,
+        #         zeta,
+        #         norm(u_exact - u, Inf),
+        #         norm(τ_exact - τ, Inf)
+        #     )
+        # )
 
         # Dirichlet Zeta Indirect
         u, τ = solve_and_evaluate(
@@ -376,6 +473,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
             S_target,
             D_target,
         )
+
         push!(
             num_solutions,
             DirichletSolution{Interior,Direct,Sidi}(
@@ -418,6 +516,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         σ_exact = σ
         τ = τ_exact
 
+        # Neumann Direct
         u, σ = solve_and_evaluate(
             BoundaryValueProblem(
                 laplace,
@@ -445,6 +544,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
                 norm(σ_exact - σ, Inf))
         )
 
+        # Neumann indirect
         u, σ = solve_and_evaluate(
             BoundaryValueProblem(
                 laplace,
@@ -471,7 +571,6 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
                 norm(σ_exact - σ, Inf)
             )
         )
-
 
     end
 

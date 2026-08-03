@@ -69,7 +69,6 @@ end
 function make_dummy_curve(x)
 
     dim_x, n = size(x)
-
     one_1d = ones(n)
     zero_nd = zeros((dim_x, n))
     zero_1d = zeros(n)
@@ -85,6 +84,7 @@ function make_dummy_curve(x)
     )
 
 end
+
 
 
 """
@@ -118,7 +118,7 @@ function DiscreteClosedCurve(x::AbstractMatrix, v::AbstractMatrix, a::AbstractMa
     w = (2π / N) .* s # WARN: discretization in parameter space h is hardcoded here
 
     # complex weights
-    # orientation of surface was flipped?
+
     cw = (2π / N) .* ComplexF64.(v[1, :], v[2, :])
 
     return DiscreteClosedCurve(x, n, k, w, cw)
@@ -137,7 +137,6 @@ function DiscreteClosedCurve(x::AbstractMatrix)
     v = periodic_spectral_diff(x)
     a = periodic_spectral_diff(v)
     return DiscreteClosedCurve(x, v, a)
-
 end
 
 """
@@ -172,7 +171,7 @@ nodes in parameter space
 """
 function DiscreteClosedCurve(n_points::Int, ρ::Function)
     # range [0, 2pi) to evaluate parametrization
-   θ = range(0, 2π; length=n_points + 1)[1:(end-1)]
+    θ = range(0, 2π; length=n_points + 1)[1:(end-1)]
     return DiscreteClosedCurve(θ, ρ)
 
 end
@@ -213,8 +212,8 @@ function periodic_spectral_diff(f)
         f_prime_hat = f_hat .* k
     elseif dim == 2
         f_prime_hat = f_hat .* transpose(k) # NOTE: this mysterious minus appeared after changing to col-major
-        # NOTE: the culprit was the ' operator which gives the adjoing in the case of
-        # complex valued vectors... transpose solves this
+    # NOTE: the culprit was the ' operator which gives the adjoing in the case of
+    # complex valued vectors... transpose solves this
     else
         error("dimension $dim not supported")
     end

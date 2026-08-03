@@ -8,9 +8,10 @@ module BoundaryIntegralEquations
 using LinearAlgebra
 using StaticArrays
 using FFTA
+using FFTW
+using LinearSolve
 using PolygonOps
 using NearestNeighbors
-using LinearSolve
 using Enzyme
 
 #
@@ -51,7 +52,11 @@ struct Direct <: Approach end
 struct Indirect <: Approach end
 
 
-#
+
+function spatial_gradient end
+
+
+
 # includes
 #
 include("finite_differences.jl")
@@ -61,14 +66,14 @@ include("manifolds.jl")
 include("operators.jl")
 include("kernels.jl")
 include("solvers.jl")
-include("utils.jl")
 include("close_evaluation.jl")
 include("map2disc.jl")
+include("utils.jl")
 
 #
 # exports
 #
-export DiscreteClosedCurve, visualize, make_dummy_curve
+export DiscreteClosedCurve, make_dummy_curve
 
 export DifferentialEquation, Laplace, Helmholtz, Stokes
 export HypersingularCorrection, Sidi, Zeta
@@ -76,25 +81,38 @@ export SingularCorrection, KapurRokhlin
 export DomainSide, Interior, Exterior
 export IntegralOperator, SingleLayer, DoubleLayer, AdjointDoubleLayer, Hypersingular
 export Approach, Direct, Indirect
+export BoundaryCondition, Dirichlet, Neumann
+export kernel
+export compute_laplace_slp_matrix, compute_laplace_dlp_adjoint_matrix
 export BoundaryDensity, BoundaryCondition, Dirichlet, Neumann, data
 export cauchy_integral, holomorphism_boundary_limit
 
 export kernel, solution_derivative
 export populate_matrices!
+
 export BoundaryValueProblem, solve, evaluate, solve_and_evaluate
 
 export starfish, ball
 
 export map2disc, map2disc_with_jacobian
 
-function visualize end
+export spatial_gradient
+export visualize
+
+export solution_derivative
+
+
+
+
+function visualize()
+    error("No GLMakie detected, please import it before calling")
+end
 
 
 # trick lsp
 @static if false
     include("../scripts/main.jl")
     include("../scripts/precomputed_coeffs.jl")
-    include("../scripts/ellipse.jl")
 
     include("../test/quick_test.jl")
     include("../test/convergence/laplace_2d.jl")
@@ -102,8 +120,7 @@ function visualize end
     include("../test/close_evaluation.jl")
     include("../test/map2disc_ellipse.jl")
 
-    # does not work
-    include.(filter(contains(r".jl$"), readdir("../test/"; join=true)))
+
 end
 
 end # module BoundaryIntegralEquations
