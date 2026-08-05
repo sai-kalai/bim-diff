@@ -4,16 +4,16 @@ function fdcoeffs(derivative_order::Int, accuracy_order::Int)::Vector{Float64}
     if derivative_order == 1
 
 
-        stencil = get!(precomputed_coeffs_first, accuracy_order) do
+        stencil = get(precomputed_coeffs_first, accuracy_order) do
             error("order $accuracy_order not supported")
-            compute_coeffs_first(accuracy_order)
+            # compute_coeffs_first(accuracy_order)
         end
 
 
     elseif derivative_order == 2
-        stencil = get!(precomputed_coeffs_second, accuracy_order) do
+        stencil = get(precomputed_coeffs_second, accuracy_order) do
             error("order $accuracy_order not supported")
-            compute_coeffs_second(accuracy_order)
+            # compute_coeffs_second(accuracy_order)
         end
 
     else
