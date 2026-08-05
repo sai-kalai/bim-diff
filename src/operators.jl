@@ -676,16 +676,15 @@ end
 
 
 function get_kr!(c::StencilCache, k::Int)
-    get!(c.kr, k) do
+    get(c.kr, k) do
         stencil = krcoeffs(k + 1)
-        [stencil[end:-1:2]; stencil] # TODO: make this prettier
     end
 end
 
+# NOTE: Enzyme panics here
 function get_fd!(c::StencilCache, k::Int)
-    get!(c.fd, k) do
+    get(c.fd, k) do
         stencil = fdcoeffs(2, k)
-        [stencil[end:-1:2]; stencil] # TODO: make this prettier
     end
 end
 
@@ -713,7 +712,7 @@ function apply_correction!(
     for dj in (-k):k
         j = mod1(i + dj, m)
         # TODO: replace by abs
-        val = stencil[dj+k+1] * 0.5 / pi
+        val = stencil[abs(dj)+1] * 0.5 / pi
         op.matrix[i, j] += val * s.w[j]
     end
 
@@ -758,7 +757,7 @@ function apply_correction!(
 
         g = nx_dot_ny * s.w[j] / (s.w[i]^2) * (1 - B + B^2)
 
-        op.matrix[i, j] += stencil[dj+k+1] * g / 4π
+        op.matrix[i, j] += stencil[abs(dj)+1] * g / 4π
 
     end
 
