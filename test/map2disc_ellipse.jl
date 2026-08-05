@@ -6,6 +6,7 @@ using StaticArrays
 using Statistics
 using PolygonOps
 using GLMakie
+using Enzyme
 
 
 
@@ -102,10 +103,19 @@ function main(viz=false)
         x_test = x_test_all[:, mask]
         xi_exact = xi_eta_exact_all[:, mask]
 
-        xi_num, sigma, tau = map2disc(Γ, θ, x_test)
+        relative_cutoff = 0.05
 
-        jac = map2disc_with_jacobian(Γ, θ, x_test)
+        xi_num, sigma, tau = map2disc(Γ, θ, x_test, relative_cutoff)
 
+        jac, xi_num_2, sigma_2, tau_2 = map2disc(
+            WithSpatialDerivativeFwd(), Γ, θ, x_test, relative_cutoff)
+
+        @test xi_num ≈ xi_num_2
+        @test sigma ≈ sigma_2
+        @test tau ≈ tau_2
+
+        # NOTE: expected is actually wrong close to the boundary, need to
+        # implement Cauchy integral for solution gradient
         jac_expected = stack(
             map(1:2) do i
                 solution_derivative(
@@ -114,8 +124,8 @@ function main(viz=false)
                     Γ.x,
                     Γ.n,
                     Γ.w,
-                    sigma[i],
-                    tau[i],
+                    tau[i, :],
+                    sigma[i, :],
                 )
 
             end
@@ -123,14 +133,11 @@ function main(viz=false)
             dims=2
         )
 
-        @show size(jac)
-        @show size(jac_expected)
-
         jac_err = jac - jac_expected
 
+        # frobenius norm
         jac_err_norm = vec(sqrt.(sum(abs2, jac_err; dims=(1, 2))))
 
-        @show size(jac_err_norm)
 
         e = xi_num .- xi_exact
 
@@ -140,7 +147,7 @@ function main(viz=false)
         # 1x1
         errs[i] = maximum(e_norm)
 
-        @show n, errs[i], minimum(jac_err_norm)
+        @show n, errs[i], median(jac_err_norm)
         if viz
             fig, ax = visualize(Γ)
             scatter_kwargs = (;
@@ -149,8 +156,11 @@ function main(viz=false)
                 markersize=15,
                 colormap=:viridis,
             )
+            arrow_kwargs = (;
+                lengthscale=1.)
+            arrows = jac_err[1, :, :]
             sc1 = scatter!(ax, x_test[1, :], x_test[2, :]; scatter_kwargs...)
-            arr = arrows2d!(ax, x_test[1, :], x_test[2, :], e[1, :], e[2, :]; lengthscale=0.1)
+            arr = arrows2d!(ax, x_test[1, :], x_test[2, :], arrows[1, :], arrows[2, :]; arrow_kwargs...)
             ax2 = Axis(fig[1, 2]; aspect=DataAspect(), title="n = $n")
             lines!(ax2, xi_eta_exact_boundary[1, :], xi_eta_exact_boundary[2, :]; color=:black)
             sc2 = scatter!(ax2, xi_exact[1, :], xi_exact[2, :]; scatter_kwargs...)

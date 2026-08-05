@@ -5,7 +5,6 @@
 # approach to BIE:
 #      	int Laplace ansatz: u = S*(du/dn) - D*u
 #       int Calder?n projection:     u =  (1/2-D)*u  +         S*(du/dn)
-using LinearAlgebra: exactdiv
 #                                du/dn =       -T*u  + (1/2+D^*)*(du/dn)
 #      	ext Laplace ansatz: u = D*u - S*(du/dn) + omega
 #       ext Calder?n projection:     u =  (1/2+D)*u  -         S*(du/dn)
@@ -230,7 +229,7 @@ end
 
 
 
-function convergence_study(n_vals=20:20:200, accuracy_order=32)
+function convergence_study(n_vals=400, accuracy_order=32)
 
 
     # useful constants
@@ -244,7 +243,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     indirect = Indirect()
 
     # indicate how to reserve memory
-    allocator = (_m, _n) -> zeros(_m, _n)
+    allocator = (_m, _n) -> Matrix{Float64}(undef, _m, _n)
 
     x_test = test_locations()
 
@@ -267,7 +266,14 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     # @assert norm(u_exact - u_exact_reference) < 1e-15
     @test u_exact ≈ u_exact_reference atol=1e-15
 
-    x_test = [x_test;; ball(0.1, 10);; ball(0.3, 30);; ball(0.6, 60);; stack((t) -> starfish(t, 0.9), 0:0.1:2pi)]
+    x_test = [
+        x_test;;
+        ball(0.1, 10);;
+        ball(0.3, 30);;
+        ball(0.6, 60);;
+        # avoid  testing close evaluation for gradient
+        # stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
+    ]
 
 
     # scatter!(ax, x_test[:, 1], x_test[:, 2], color=u_exact)
@@ -286,19 +292,21 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         # target: domain boundary, source: manufactured solution point sources
         S_source = SingleLayer(laplace, Γ_source, Γ.x; matrix_factory=allocator)
         D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x, Γ.n; matrix_factory=allocator)
+        populate_matrices!(Γ_source, Γ.x, S_source, D_star_source; target_normals=Γ.n)
 
         σ = S_source * density_source # Dirichlet BC
         τ_exact = D_star_source * density_source # Neumann BC exact solution
-
 
         S = SingleLayer(laplace, Γ, kapur_rokhlin)
         D = DoubleLayer(laplace, Γ)
         D_star = AdjointDoubleLayer(laplace, Γ)
         H_zeta = Hypersingular(laplace, Γ, zeta)
         H_sidi = Hypersingular(laplace, Γ, sidi)
+        populate_matrices!(Γ, S, D, D_star, H_zeta, H_sidi)
 
         S_target = SingleLayer(laplace, Γ, x_test,)
         D_target = DoubleLayer(laplace, Γ, x_test,)
+        populate_matrices!(Γ, x_test, S_target, D_target,)
 
         # Dirichlet Zeta Direct
 
@@ -320,7 +328,6 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         end
 
 
-
         @time u, τ = s(x_test)
 
         prob = BoundaryValueProblem(
@@ -331,10 +338,10 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         )
 
 
-        bie_solution = solve(prob, direct, D_star, H_zeta)
+        bie_solution = solve(prob, indirect, D)
 
         # primal run of solution evaluation
-        bvp_solution = evaluate(prob, direct, bie_solution, x_test)
+        bvp_solution = evaluate(prob, indirect, sidi, bie_solution, x_test)
 
 
 
@@ -342,55 +349,16 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
         @time begin
 
-            dx_test_1 = Enzyme.make_zero(x_test)
-            dx_test_2 = Enzyme.make_zero(x_test)
-            dprob = Enzyme.make_zero(prob)
-
-            dbie_solution = Enzyme.make_zero(bie_solution)
-
-            dx_test_1[1, :] .= 1.;
-            dx_test_2[2, :] .= 1.;
-
-            f1 = autodiff(
-                ForwardWithPrimal,
-                Const(evaluate),
-                Duplicated(prob, dprob),
-                Const(direct),
-                Duplicated(bie_solution, dbie_solution),
-                Duplicated(x_test, dx_test_1),
-            )
-
-            f2 = autodiff(
-                ForwardWithPrimal,
-                Const(evaluate),
-                Duplicated(prob, dprob),
-                Const(direct),
-                Duplicated(bie_solution, dbie_solution),
-                Duplicated(x_test, dx_test_2),
-            )
-
-
-
-
-            g4 = [collect(f1[1][1])'; collect(f2[1][1])']
-
-
-        end
-
-
-        @time begin
-            jac = jacobian(
-                set_runtime_activity(ReverseWithPrimal),
-                x -> evaluate(
-                    prob,
-                    direct,
-                    bie_solution,
-                    x
-                )[1],
+            g5, primal = evaluate(
+                WithSpatialDerivativeFwd(),
+                prob,
+                indirect,
+                sidi,
+                bie_solution,
                 x_test,
+                0.05,
             )
 
-            @show jac
         end
 
         exact_gradient = solution_derivative(
@@ -403,22 +371,20 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
             σ,
         )
 
-        @test g4 ≈ exact_gradient atol=1e-5
+        @show typeof(primal)
+        @show extrema(g5 - exact_gradient)
+        @show extrema(u - primal[1])
+        @test g5 ≈ exact_gradient atol=1e-5
 
-        # @time begin
-        #     g2 = spatial_gradient(Forward, prob, x_test, indirect, zeta)
-        # end
-        #
-        # @time begin
-        #     g3 = spatial_gradient(Enzyme.Reverse, prob, x_test, indirect, zeta)
-        # end
-        #
-        # @test g2 ≈ g3
+        function plot_all(arrs)
+            fig, ax = visualize(Γ)
+            scatter!(ax, x_test[1, :], x_test[2, :]; color=u, markersize=20)
+            arrows2d!(ax, x_test[1, :], x_test[2, :], arrs[1, :], arrs[2, :]; lengthscale=0.1)
+            wait(display(fig))
+        end
 
-        fig, ax = visualize(Γ)
-        scatter!(ax, x_test[1, :], x_test[2, :]; color=u, markersize=20)
-        arrows2d!(ax, x_test[1, :], x_test[2, :], g4[1, :], g4[2, :]; lengthscale=0.1)
-        wait(display(fig))
+        plot_all(g5 - exact_gradient)
+
         break
 
         # push!(
