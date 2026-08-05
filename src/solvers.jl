@@ -299,7 +299,16 @@ function evaluate(
 
     return u, τ
 end
+function evaluate(
+    ::Nothing,
+    args...,
+    ;
+    kwargs...,
+)
+    # return nothing as derivatives to have same return
+    nothing, evaluate(args...; kwargs...)
 
+end
 @doc raw"""
     evaluate(problem::BoundaryValueProblem{Laplace,Dirichlet,Interior,<:DiscreteClosedCurve}, approach::Indirect, correction::HypersingularCorrection, φ::BoundaryDensity, target::AbstractMatrix, relative_cutoff=0.05, matrix_factory::Function=default_allocator)
 
