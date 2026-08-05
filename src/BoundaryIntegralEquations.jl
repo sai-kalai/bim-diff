@@ -8,11 +8,9 @@ module BoundaryIntegralEquations
 using LinearAlgebra
 using StaticArrays
 using FFTA
-using FFTW
 using LinearSolve
 using PolygonOps
 using NearestNeighbors
-using Enzyme
 
 #
 # type definitions
@@ -53,7 +51,20 @@ struct Indirect <: Approach end
 
 
 
-function spatial_gradient end
+@doc raw"""
+    AbstractDerivativeRequest
+
+Specify that a derivative needs to be computed, and what mode AD to use
+
+"""
+abstract type AbstractDerivativeRequest end
+struct WithSpatialDerivativeFwd <: AbstractDerivativeRequest end
+struct WithSpatialDerivativeRev <: AbstractDerivativeRequest end
+
+function evaluate(::AbstractDerivativeRequest, args...)
+    error("This derivative request requires loading Enzyme")
+end
+
 
 
 
@@ -83,9 +94,10 @@ export IntegralOperator, SingleLayer, DoubleLayer, AdjointDoubleLayer, Hypersing
 export Approach, Direct, Indirect
 export BoundaryCondition, Dirichlet, Neumann
 export kernel
-export compute_laplace_slp_matrix, compute_laplace_dlp_adjoint_matrix
-export BoundaryDensity, BoundaryCondition, Dirichlet, Neumann, data
+export AbstractBoundaryDensity, BoundaryDensity, BoundaryCondition, Dirichlet, Neumann, data
 export cauchy_integral, holomorphism_boundary_limit
+export AbstractDerivativeRequest, WithSpatialDerivativeFwd, WithSpatialDerivativeRev
+
 
 export kernel, solution_derivative
 export populate_matrices!
@@ -96,7 +108,6 @@ export starfish, ball
 
 export map2disc, map2disc_with_jacobian
 
-export spatial_gradient
 export visualize
 
 export solution_derivative

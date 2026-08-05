@@ -2,15 +2,29 @@
 
 
 
+
+# for no derivative requested
 function map2disc(
     boundary::DiscreteClosedCurve,
     boundary_parameter::AbstractVector, # pass the parameter used, later include this information inside boundary struct
     points::AbstractMatrix,
+    relative_cutoff=0.05,
+)
+    map2disc(nothing, boundary, boundary_parameter, points, relative_cutoff)
+end
+
+
+function map2disc(
+    derivative_request::Union{AbstractDerivativeRequest,Nothing},
+    boundary::DiscreteClosedCurve,
+    boundary_parameter::AbstractVector, # pass the parameter used, later include this information inside boundary struct
+    points::AbstractMatrix,
+    relative_cutoff=0.05,
 )
 
     laplace=Laplace()
     indirect=Indirect()
-    hypersingular_correction=Zeta(16)
+    hypersingular_correction=Zeta(32)
     interior=Interior()
 
     sigma_xi = cos.(boundary_parameter)
@@ -26,60 +40,30 @@ function map2disc(
         Ref(indirect),
     )
 
-    solns = evaluate.(
+    evals = evaluate.(
+        Ref(derivative_request),
         pbs,
         Ref(indirect),
         Ref(hypersingular_correction),
         phis,
         Ref(points),
-        Ref(0.05)
+        Ref(relative_cutoff)
     )
 
-    # return from evaluate is a tuple of (u, trace)
-    xi = solns[1][1]
-    eta = solns[2][1]
-
-    tau_xi = data(solns[1][2])
-    tau_eta = data(solns[2][2])
+    solns = last.(evals)
 
 
     # stack in column-major matrix of 2d point
-    xi_eta = permutedims(hcat(xi, eta))
+    xi = stack(first.(solns); dims=1)
+    sigma = stack((sigma_xi, sigma_eta); dims=1)
+    tau = stack(data.(getindex.(solns, 2)); dims=1)
 
-    return xi_eta, (sigma_xi, sigma_eta), (tau_xi, tau_eta)
+
+    if isnothing(derivative_request)
+        return xi, sigma, tau
+    else
+        derivs = stack(first.(evals); dims=2)
+        return derivs, xi, sigma, tau
+    end
 end
 
-
-function map2disc_with_jacobian(
-    boundary::DiscreteClosedCurve,
-    boundary_parameter::AbstractVector, # pass the parameter used, later include this information inside boundary struct
-    points::AbstractMatrix,
-)
-
-    jac = stack(
-        map(1:2) do i
-            d_points = Enzyme.make_zero(points)
-            d_boundary = Enzyme.make_zero(boundary)
-            d_boundary_parameter = Enzyme.make_zero(boundary_parameter)
-            d_points = Enzyme.make_zero(points)
-            d_points[i, :] .= 1.
-
-            ad = autodiff(
-                Enzyme.set_runtime_activity(ForwardWithPrimal),
-                map2disc,
-                Duplicated(boundary, d_boundary),
-                Duplicated(boundary_parameter, d_boundary_parameter),
-                Duplicated(points, d_points),
-            )
-
-            @show typeof(ad[1][1]), size(ad[1][1])
-            ad[1][1]
-        end
-        ;
-        dims=2
-    )
-
-    return jac
-
-
-end
