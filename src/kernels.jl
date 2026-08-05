@@ -110,6 +110,8 @@ function kernel_gradient(
 end
 
 
+# TODO: implement indirect mode. Otherwise, many points are required for
+# testing accuracy of indirect mode
 function solution_derivative(
     approach::Direct,
     x,
