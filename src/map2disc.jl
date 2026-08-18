@@ -134,3 +134,58 @@ function newton_search(func, u0, max_iter, tol)
 
     return u
 end
+
+
+
+# perform 2d trapezoidal rule to approximate ∫|J|^2dx
+function jacobian_functional(
+    rho_nodes,
+    theta_nodes,
+    boundary,
+    parameter,
+    relative_cutoff,
+    x0,
+)
+    iterator = Iterators.product(rho_nodes, theta_nodes)
+
+    # compute xi at quadrature points
+    xi_nodes = stack(
+        ((rho, theta),) -> SA[rho*cos(theta), rho*sin(theta)],
+        iterator,
+        ;
+        dims=2
+    )
+
+    # corresponding ambient space location of quadrature nodes
+    x_nodes = inverse_map2disc.(
+        Ref(boundary),
+        Ref(parameter),
+        eachcol(xi_nodes),
+        Ref(relative_cutoff),
+        Ref(x0),
+    )
+
+    # compute jacoban at the nodes
+    jac_nodes, xi_nodes, _ = map2disc(
+        WithSpatialDerivativeFwd(),
+        boundary,
+        parameter,
+        x_nodes,
+        relative_cutoff
+    )
+
+
+    functional = 0.0
+    # implement with CartesianIndices
+    for i in eachindex(iterator)
+
+        functional += (det(jac_nodes[:, :, i])^2) *
+                      (rho_nodes[i+1] - rho_nodes[i]) *
+                      (theta_nodes[i+1] - theta_nodes[i])
+
+    end
+
+    functional *= 1/2
+
+    return functional
+end
