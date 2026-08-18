@@ -72,7 +72,7 @@ function main(viz=false)
     )
 
 
-    n_vals = 20:80:400
+    n_vals = 200:80:400
     errs = zeros(Float64, size(n_vals, 1))
 
     ord = 32
@@ -148,6 +148,51 @@ function main(viz=false)
         errs[i] = maximum(e_norm)
 
         @show n, errs[i], median(jac_err_norm)
+
+
+        # test inverse mapping
+        xi = reshape([0., 0.], (2, 1)) # client wants to find x corresponding to this xi
+        x0 = reshape([x0, y0] .+ randn(2), (2, 1)) # initial guess for x
+        println("searching for xi=$xi")
+        println("initial x = $x0")
+        x = inverse_map2disc(Γ, θ, xi, relative_cutoff, x0)
+
+        @show x
+        # quadrature nodes
+
+        n_quadrature = 5
+        rho_nodes = range(0, 1; length=n_quadrature + 1)[2:(end-1)]
+        theta_nodes = range(0, 2π; length=n_quadrature + 1)[1:(end-1)]
+
+        # list containing all integration points
+        xi_nodes = stack(
+            ((rho, theta),) -> SA[rho*cos(theta), rho*sin(theta)],
+            Iterators.product(rho_nodes, theta_nodes),
+            ;
+            dims=2
+        )
+
+        x_nodes = inverse_map2disc.(
+            Ref(Γ),
+            Ref(θ),
+            eachcol(xi_nodes),
+            Ref(relative_cutoff),
+            Ref(x0),
+        )
+
+        # jac_nodes, xi_nodes, _ = map2disc(WithSpatialDerivativeFwd(), Γ, θ, x_nodes, relative_cutoff)
+        #
+        # # shape optimization functional using trapezoidal rule
+        # functional = 0.0
+        # for i in axes(jac_nodes, 3)
+        #     functional += 1/2*det(jac[:, :, i])
+        # end
+        #
+        # functional *= (rho_nodes[2] - rho_nodes[1]) * (theta_nodes[2] - theta_nodes[1])
+
+
+
+
         if viz
             fig, ax = visualize(Γ)
             scatter_kwargs = (;
@@ -160,13 +205,23 @@ function main(viz=false)
                 lengthscale=1.)
             arrows = jac_err[1, :, :]
             sc1 = scatter!(ax, x_test[1, :], x_test[2, :]; scatter_kwargs...)
+
+
+
             arr = arrows2d!(ax, x_test[1, :], x_test[2, :], arrows[1, :], arrows[2, :]; arrow_kwargs...)
             ax2 = Axis(fig[1, 2]; aspect=DataAspect(), title="n = $n")
             lines!(ax2, xi_eta_exact_boundary[1, :], xi_eta_exact_boundary[2, :]; color=:black)
             sc2 = scatter!(ax2, xi_exact[1, :], xi_exact[2, :]; scatter_kwargs...)
+            scatter!(ax2, xi_nodes[1, :], xi_nodes[2, :]; color=:red)
             Colorbar(fig[1, 2][1, 3], sc2; label="log10 error inf norm")
             wait(display(fig))
         end
+
+
+        break
+
+
+
     end
 
     # convergence plot
