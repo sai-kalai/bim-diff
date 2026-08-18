@@ -106,7 +106,7 @@ export BoundaryValueProblem, solve, evaluate, solve_and_evaluate
 
 export starfish, ball
 
-export map2disc, map2disc_with_jacobian
+export map2disc, inverse_map2disc
 
 export visualize
 
