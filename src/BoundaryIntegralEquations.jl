@@ -11,6 +11,7 @@ using FFTW
 using PolygonOps
 using NearestNeighbors
 using LinearSolve
+using RecursiveFactorization
 
 #
 # type definitions

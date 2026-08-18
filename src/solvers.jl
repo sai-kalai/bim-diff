@@ -17,10 +17,16 @@ struct BoundaryValueProblem{
 end
 
 # TODO: instead, overload commonsolve
-function solve_linear_system(A, b; algorithm=nothing)
+function solve_linear_system(A, b; algorithm=RFLUFactorization())
     pbm = LinearSolve.LinearProblem(A, b)
     sln = LinearSolve.solve(pbm, algorithm)
     return sln.u
+
+    # NOTE: LinearSolve is needed for Enzyme rules, but it chooses a solver
+    # (MKU) that degrades performance. Investigate how to pick a better solver.
+    # return A \ b
+    # update: RFLU from RecursiveFactorization.jl works as well as \ did,
+    # solving convergence_study(20:20:200) in about 10 ms
 end
 
 abstract type EvaluationDistance end
