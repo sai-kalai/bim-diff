@@ -541,7 +541,7 @@ function solve(
     approach::Indirect,
     ;
     matrix_factory::Function=default_allocator,
-)::Dirichlet
+)::BoundaryDensity
 
     D_star = AdjointDoubleLayer(problem.equation, problem.boundary; matrix_factory=matrix_factory, populate_matrix=true)
 
