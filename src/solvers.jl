@@ -399,7 +399,8 @@ function solve(
     D::DoubleLayer,
 )::Dirichlet
 
-    σ = solve_linear_system((0.5 + D), (S * problem.bc))
+    # add 1 to kill 1d nullspace
+    σ = solve_linear_system((0.5 + D) .+ problem.boundary.w, (S * problem.bc))
     return Dirichlet(σ)
 
     # NOTE: ???????????????????????????????????????? became singular after colmajor
@@ -517,7 +518,7 @@ function solve(
     D_star,
 )::BoundaryDensity
 
-    ψ = solve_linear_system((0.5 + D_star), problem.bc.τ)
+    ψ = solve_linear_system((0.5 + D_star) .+ problem.boundary.w, problem.bc.τ)
 
     return BoundaryDensity(ψ)
 end
