@@ -5,6 +5,7 @@
 # approach to BIE:
 #      	int Laplace ansatz: u = S*(du/dn) - D*u
 #       int Calder?n projection:     u =  (1/2-D)*u  +         S*(du/dn)
+using LinearAlgebra: switch_dim12
 #                                du/dn =       -T*u  + (1/2+D^*)*(du/dn)
 #      	ext Laplace ansatz: u = D*u - S*(du/dn) + omega
 #       ext Calder?n projection:     u =  (1/2+D)*u  -         S*(du/dn)
@@ -81,16 +82,20 @@ solution_label(sol) = begin
     "$bc / $approach / $correction"
 end
 
-get_color(::DirichletSolution{S,A,Sidi}) where
-{S<:DomainSide,A<:Approach} = :magenta
-get_color(::DirichletSolution{S,A,Zeta}) where
-{S<:DomainSide,A<:Approach} = :red
-get_color(::NeumannSolution) = :blue
-
-get_linestyle(::NumericalSolution{S,Direct}) where
-{S<:DomainSide} = :solid
-get_linestyle(::NumericalSolution{S,Indirect}) where
-{S<:DomainSide} = :dash
+get_color(::Type{DirichletSolution{S,A,Sidi}}) where {S<:DomainSide,A<:Approach} = :blue
+get_color(::Type{DirichletSolution{S,A,Zeta}}) where {S<:DomainSide,A<:Approach} = :red
+get_color(::Type{NeumannSolution{S,A}}) where {S<:DomainSide,A<:Approach} = :yellow
+get_color(s::NumericalSolution) = get_color(typeof(s))
+get_linestyle(::Type{<:NumericalSolution{S,Direct}}) where {S<:DomainSide} = :solid
+get_linestyle(::Type{<:NumericalSolution{S,Indirect}}) where {S<:DomainSide} = :dash
+get_linestyle(s::NumericalSolution) = get_linestyle(typeof(s))
+get_marker(data) = begin
+    if data == :solution
+        return :circle
+    elseif data == :boundary
+        return :rect
+    end
+end
 
 function solution_style(sol)
 
@@ -104,10 +109,7 @@ end
 function plot_errors(
     solutions::Vector{NumericalSolution},
 )
-    # ----------------------------
     # Group by configuration
-    # ----------------------------
-
     groups = Dict{String,Vector{NumericalSolution}}()
 
     for sol in solutions
@@ -121,17 +123,14 @@ function plot_errors(
         push!(groups[key], sol)
     end
 
-    # ----------------------------
     # Plot
-    # ----------------------------
-
     fig = Figure(size=(900, 600))
 
 
     ax = Axis(
         fig[1, 1],
         xlabel="n",
-        ylabel="∞-error",
+        ylabel="L∞-error",
         yscale=log10,
         xscale=log10,
     )
@@ -153,13 +152,13 @@ function plot_errors(
             label=label,
             linestyle=st.linestyle,
             color=st.color,
-            marker=:circle,
+            marker=get_marker(:solution),
             markersize=12,
             linewidth=2,
         )
 
         trace_errs = [
-            s isa DirichletSolution ? s.τ_err : s.σ_err
+            get_trace_err(s)
             for s in sols
         ]
 
@@ -170,7 +169,7 @@ function plot_errors(
             label="$label trace",
             linestyle=st.linestyle,
             color=st.color,
-            marker=:rect,
+            marker=get_marker(:boundary),
             markersize=12,
             linewidth=2,
         )
@@ -181,23 +180,30 @@ function plot_errors(
     Legend(
         fig[1, 1],
         [
-            LineElement(linestyle=:solid),
-            LineElement(linestyle=:dash),
-            MarkerElement(color=:blue, marker=:circle),
-            MarkerElement(color=:magenta, marker=:circle),
-            MarkerElement(color=:red, marker=:circle),
-            MarkerElement(color=:black, marker=:circle),
-            MarkerElement(color=:black, marker=:rect),
+            # linestyle -> approach
+            LineElement(linestyle=get_linestyle(DirichletSolution{DomainSide,Direct})),
+            LineElement(linestyle=get_linestyle(DirichletSolution{DomainSide,Indirect})),
+            # color -> bc
+            MarkerElement(color=get_color(DirichletSolution{DomainSide,Approach,Zeta}), marker=:circle),
+            MarkerElement(color=get_color(DirichletSolution{DomainSide,Approach,Sidi}), marker=:circle),
+            MarkerElement(color=get_color(NeumannSolution{DomainSide,Approach}), marker=:circle),
+            # marker -> solution vs cauchy datum
+            MarkerElement(color=:black, marker=get_marker(:solution)),
+            MarkerElement(color=:black, marker=get_marker(:boundary)),
         ],
         [
+            # linestyle
             "Direct",
             "Indirect",
+            # color
             "Dirichlet (Zeta)",
             "Dirichlet (Sidi)",
             "Neumann",
+            # marker
             "Solution",
             "Boundary Trace"
-        ], "Legend";
+        ],
+        "Legend";
         tellwidth=false,
         halign=:left,
         valign=:bottom
@@ -245,6 +251,15 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
     x_test = test_locations()
 
+    # add extra test points
+    x_test = [
+        x_test;;
+        # ball(0.1, 10);;
+        # ball(0.3, 30);;
+        # ball(0.6, 60);;
+        # # avoid  testing close evaluation for gradient
+        # stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
+    ]
 
     x_source, density_source = point_sources()
 
@@ -258,9 +273,9 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
     # matrix = compute_laplace_slp_matrix(x_test, x_source)
     u_exact = S_manuf * density_source # exact solution at test points
-    u_exact_reference = reference_exact_solution()
 
-    @test norm(u_exact - u_exact_reference) < 1e-15
+    u_exact_reference = reference_exact_solution()
+    @test u_exact[1:length(u_exact_reference)] ≈ u_exact_reference atol = 1e-15
 
     # scatter!(ax, x_test[:, 1], x_test[:, 2], color=u_exact)
 
@@ -274,8 +289,6 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     for (i, n) ∈ enumerate(n_vals)
 
         Γ = DiscreteClosedCurve(n, starfish) # boundary of the domain
-
-
 
         # fig = visualize(Γ)
         # wait(display(fig))
