@@ -15,10 +15,10 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [weakdeps]
-GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
 [extensions]
-BoundaryIntegralEquationsGLMakieExt = "GLMakie"
+BoundaryIntegralEquationsMakieExt = "Makie"
 
 [compat]
 FFTW = "1.10.0"
