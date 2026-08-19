@@ -84,7 +84,7 @@ end
 
 get_color(::Type{DirichletSolution{S,A,Sidi}}) where {S<:DomainSide,A<:Approach} = :blue
 get_color(::Type{DirichletSolution{S,A,Zeta}}) where {S<:DomainSide,A<:Approach} = :red
-get_color(::Type{NeumannSolution{S,A}}) where {S<:DomainSide,A<:Approach} = :yellow
+get_color(::Type{NeumannSolution{S,A}}) where {S<:DomainSide,A<:Approach} = :lawngreen
 get_color(s::NumericalSolution) = get_color(typeof(s))
 get_linestyle(::Type{<:NumericalSolution{S,Direct}}) where {S<:DomainSide} = :solid
 get_linestyle(::Type{<:NumericalSolution{S,Indirect}}) where {S<:DomainSide} = :dash
