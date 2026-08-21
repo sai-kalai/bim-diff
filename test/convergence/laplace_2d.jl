@@ -5,7 +5,6 @@
 # approach to BIE:
 #      	int Laplace ansatz: u = S*(du/dn) - D*u
 #       int Calder?n projection:     u =  (1/2-D)*u  +         S*(du/dn)
-using LinearAlgebra: switch_dim12
 #                                du/dn =       -T*u  + (1/2+D^*)*(du/dn)
 #      	ext Laplace ansatz: u = D*u - S*(du/dn) + omega
 #       ext Calder?n projection:     u =  (1/2+D)*u  -         S*(du/dn)
@@ -15,8 +14,9 @@ using LinearAlgebra: switch_dim12
 
 using Test
 using Revise
+using StaticArrays
 
-using GLMakie
+using CairoMakie
 
 
 using LinearAlgebra
@@ -86,7 +86,7 @@ get_color(::Type{DirichletSolution{S,A,Sidi}}) where {S<:DomainSide,A<:Approach}
 get_color(::Type{DirichletSolution{S,A,Zeta}}) where {S<:DomainSide,A<:Approach} = :red
 get_color(::Type{NeumannSolution{S,A}}) where {S<:DomainSide,A<:Approach} = :lawngreen
 get_color(s::NumericalSolution) = get_color(typeof(s))
-get_linestyle(::Type{<:NumericalSolution{S,Direct}}) where {S<:DomainSide} = :solid
+get_linestyle(::Type{<:NumericalSolution{S,Direct}}) where {S<:DomainSide} = :dot
 get_linestyle(::Type{<:NumericalSolution{S,Indirect}}) where {S<:DomainSide} = :dash
 get_linestyle(s::NumericalSolution) = get_linestyle(typeof(s))
 get_marker(data) = begin
@@ -124,8 +124,9 @@ function plot_errors(
     end
 
     # Plot
-    fig = Figure(size=(900, 600))
-
+    fig = Figure(
+    # size=(900, 600)
+    )
 
     ax = Axis(
         fig[1, 1],
@@ -133,8 +134,10 @@ function plot_errors(
         ylabel="L∞-error",
         yscale=log10,
         xscale=log10,
+        xticks=LinearTicks(5)
     )
 
+    ns = nothing
     for (label, sols) in groups
 
         sort!(sols, by=s -> s.n)
@@ -177,6 +180,34 @@ function plot_errors(
     end
 
 
+
+
+    # # trendlines
+
+
+    conv_style = (; linestyle=:dashdotdot, linewidth=3)
+
+    # polynomial
+    order_offset = 32/8
+
+    # lines!(
+    #     ax,
+    #     ns,
+    #     (ns ./ (ns[1])) .^ float(-order_offset),
+    #     ;
+    #     color=:black,
+    #     conv_style...
+    # )
+
+    α = 0.1
+    lines!(ax,
+        ns, # use last iteration for getting ns
+        exp.(-α .* ns),
+        ;
+        color=:grey,
+        conv_style...
+    )
+
     Legend(
         fig[1, 1],
         [
@@ -190,6 +221,10 @@ function plot_errors(
             # marker -> solution vs cauchy datum
             MarkerElement(color=:black, marker=get_marker(:solution)),
             MarkerElement(color=:black, marker=get_marker(:boundary)),
+
+            # convergence rates
+            LineElement(; color=:grey, conv_style...),
+            # LineElement(; color=:black, conv_style...)
         ],
         [
             # linestyle
@@ -201,7 +236,10 @@ function plot_errors(
             "Neumann",
             # marker
             "Solution",
-            "Boundary Trace"
+            "Boundary Trace",
+            # convergence line
+            "O(exp(-$α n))",
+            # "O(n^-$(order_offset))",
         ],
         "Legend";
         tellwidth=false,
@@ -209,31 +247,14 @@ function plot_errors(
         valign=:bottom
     )
 
-    fig
-
-    # order_offset = ord - 2
-    # # trendlines
-    # lines!(
-    #     ax,
-    #     n_vals,
-    #     (n_vals ./ (n_vals[1])) .^ float(-order_offset),
-    #     label="O(h^$(order_offset))",
-    #     linestyle=:dash,
-    #     color=:black)
-    # exponential_decay = 0.1
-    # lines!(ax,
-    #     n_vals,
-    #     exp.(-exponential_decay .* (n_vals .- n_vals[1])),
-    #     label="O(exp(-$exponential_decay / h))",
-    #     linestyle=:dot,
-    #     color=:black
-    # )
-
+    fig, ax
 end
 
 
 
-function convergence_study(n_vals=20:20:200, accuracy_order=32)
+function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
+
+    @show n_vals
 
 
     # useful constants
@@ -249,9 +270,8 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
     # indicate how to reserve memory
     allocator = (_m, _n) -> Matrix{Float64}(undef, _m, _n)
 
+    # evaluation points for convergence results
     x_test = test_locations()
-
-    # add extra test points
     x_test = [
         x_test;;
         # ball(0.1, 10);;
@@ -261,21 +281,38 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         # stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
     ]
 
+    # dense grid for plotting
+    n_dense = 200
+    Γ_dense = DiscreteClosedCurve(n_dense, starfish)
+    xmin, xmax, ymin, ymax = extrema(Γ_dense)
+    xs = range(xmin, xmax, length=n_dense)
+    ys = range(ymin, ymax, length=n_dense)
+    iter = Iterators.product(xs, ys)
+    x_dense = stack(((x, y),) -> SA[x, y], iter; dims=2)
+
+    # get known solution at test and plot points
     x_source, density_source = point_sources()
+
+    ds2 = similar(density_source)
+
+    for i in eachindex(ds2)
+        ds2[i] = density_source[mod1(i+5, length(ds2))]
+    end
+
+    density_source .= ds2
 
     density_source = BoundaryDensity(density_source)
 
-    n_source = size(x_source, 2)
 
     Γ_source = make_dummy_curve(x_source)
-
     S_manuf = SingleLayer(laplace, Γ_source, x_test; matrix_factory=allocator, populate_matrix=true)
-
-    # matrix = compute_laplace_slp_matrix(x_test, x_source)
+    S_manuf_dense = SingleLayer(laplace, Γ_source, x_dense; populate_matrix=true)
     u_exact = S_manuf * density_source # exact solution at test points
+    u_exact_dense = S_manuf_dense * density_source
 
+    # verify that results match MATLAB version
     u_exact_reference = reference_exact_solution()
-    @test u_exact[1:length(u_exact_reference)] ≈ u_exact_reference atol = 1e-15
+    # @test u_exact[1:length(u_exact_reference)] ≈ u_exact_reference atol = 1e-15
 
     # scatter!(ax, x_test[:, 1], x_test[:, 2], color=u_exact)
 
@@ -290,9 +327,6 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
 
         Γ = DiscreteClosedCurve(n, starfish) # boundary of the domain
 
-        # fig = visualize(Γ)
-        # wait(display(fig))
-        # break
 
         # target: domain boundary, source: manufactured solution point sources
         S_source = SingleLayer(laplace, Γ_source, Γ.x) # ok
@@ -318,9 +352,6 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
         D_target = DoubleLayer(laplace, Γ, x_test) # ok
         populate_matrices!(Γ, x_test, S_target, D_target)
 
-        # display(S_target.matrix)
-        # display(D_target.matrix)
-        # break
 
         # Dirichlet Zeta Direct
 
@@ -337,6 +368,66 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32)
             S_target,
             D_target,
         )
+
+        if viz
+            cutoff = 0.05
+            @show cutoff
+            u_dense, τ_dense = solve_and_evaluate(
+                BoundaryValueProblem(
+                    laplace,
+                    Dirichlet(σ),
+                    interior,
+                    Γ
+                ),
+                indirect,
+                zeta,
+                x_dense,
+                cutoff,
+            )
+
+            fig, ax = visualize(Γ, false, false)
+
+            # cof = tricontourf!(ax, Γ, x_dense, u_dense, σ;
+            #     levels=range(extrema(u)..., 10))
+            # Colorbar(fig[1, 2], cof)
+            # val = u_dense
+
+            val = log10.(abs.(u_dense - u_exact_dense) .+ eps(eltype(u_dense)))
+
+            outside_mask = mask(Γ, x_dense, Exterior())
+
+            # val[outside_mask] .= NaN
+            val = reshape(val, (n_dense, n_dense))
+
+            lo, hi = extrema(val[.! outside_mask])
+
+            step = (hi-lo) < 5 ? 0.5 : 1
+
+            levels = range(floor(lo), ceil(hi), step=step)
+
+            co = contourf!(
+                ax,
+                Γ,
+                xs,
+                ys,
+                val,
+                levels=levels,
+                extendlow=:auto,
+                extendhigh=:auto,
+            )
+
+
+            Colorbar(
+                fig[1, 2],
+                co;
+                label="log10 error",
+                ticks=levels
+            )
+
+            return fig, ax
+        end
+
+
         push!(
             num_solutions,
             DirichletSolution{Interior,Direct,Zeta}(
