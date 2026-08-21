@@ -2,22 +2,39 @@
 module BoundaryIntegralEquationsMakieExt
 
 using BoundaryIntegralEquations
+using DelaunayTriangulation
 using Makie
 
 
-
+# non inplace version to allocate fig and ax
 function BoundaryIntegralEquations.visualize(
-    b::DiscreteClosedCurve,
-    arrows::Bool=true,
+    args...
 )
 
     fig = Figure()
     ax = Axis(fig[1, 1]; aspect=DataAspect())
 
+    ax = visualize!(ax, args...)
+
+    return fig, ax
+end
+
+function BoundaryIntegralEquations.visualize!(
+    ax::Axis,
+    b::DiscreteClosedCurve,
+    arrows::Bool=true,
+    parameter::Bool=true,
+)
 
     x, y = eachrow(b.x)
 
-    curve = lines!(ax, x, y; color=1:size(b, 2))
+    curve = lines!(
+        ax,
+        x,
+        y
+        ;
+        color=parameter ? (1:size(b, 2)) : :black
+    )
 
     if arrows
         norm = arrows2d!(ax, x, y, b.n[1, :], b.n[2, :],
@@ -37,30 +54,74 @@ function BoundaryIntegralEquations.visualize(
     #     # halign=:left,
     #     # valign=:bottom,
     # )
-
-    return fig, ax
-
+    return ax
 end
 
 
-function BoundaryIntegralEquations.visualize(
+function Makie.tricontourf!(
+    ax::Axis,
     b::DiscreteClosedCurve,
     positions::AbstractMatrix,
     values::AbstractVector,
+    boundary_values::AbstractVector,
     ;
     kwargs...
 )
 
-    fig, ax = BoundaryIntegralEquations.visualize(b, false)
+    ax = BoundaryIntegralEquations.visualize!(ax, b, false)
 
-    # extract from col-major ordering
-    x, y = eachrow(positions)
+    # extract from col-major ordering into vector of tuples
+    points = [Tuple(p) for p in eachcol(positions)]
+    tmp = copy(points)
+    # make polygon from vertices of boundary
+    poly = polygon(b)
 
-    Makie.tricontourf!(ax, x, y, values; kwargs...)
+    boundary_nodes, points = convert_boundary_points_to_indices(
+        [poly,],
+        ;
+        existing_points=points
+    )
 
-    Makie.scatter!(ax, x, y; color=:red, marker=:cross)
+    tri = triangulate(points; boundary_nodes=boundary_nodes)
 
-    return fig, ax
+    z = [
+        values
+        boundary_values
+    ]
+
+
+    co = Makie.tricontourf!(ax, tri, z; kwargs...)
+
+    # x, y = eachrow(positions)
+    # Makie.scatter!(ax, x, y; color=:red, marker=:cross)
+
+    return co
+end
+
+@doc raw"""
+    Makie.contourf!(ax::Axis, b::DiscreteClosedCurve, xs::AbstractVector, ys::AbstractVector, values::AbstractVector)
+
+Contour plot some scalar function in a domain enclosed by `b`
+
+# Arguments
+- `ax::Axis`: axis to modify
+- `b::DiscreteClosedCurve`: boundary
+- `xs::AbstractVector`: x values, of size (N, )
+- `ys::AbstractVector`: y values, of size (M, )
+- `values::AbstractVector`: function values, of size (N, M)
+"""
+function Makie.contourf!(
+    ax::Axis,
+    b::DiscreteClosedCurve,
+    xs::AbstractVector,
+    ys::AbstractVector,
+    values::AbstractMatrix,
+    ;
+    kwargs...
+)
+
+    co = Makie.contourf!(ax, xs, ys, values; kwargs...)
+    return co
 end
 
 end

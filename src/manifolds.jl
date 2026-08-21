@@ -60,22 +60,123 @@ struct DiscreteClosedCurve{
     end
 end
 
+
+@doc raw"""
+    Base.extrema(c::DiscreteClosedCurve)
+
+compute the minimum and maximum of x and y coordinates of the curve
+
+# Arguments
+- `c::DiscreteClosedCurve`: curve to compute the extrema
+"""
+function Base.extrema(c::DiscreteClosedCurve)
+    (xmin, xmax), (ymin, ymax) = extrema(c.x, dims=2)
+    return xmin, xmax, ymin, ymax
+end
+
+@doc raw"""
+    length_scale(c::DiscreteClosedCurve)
+
+compute the diagonal length of the axis-aligned rectangle where the curve is
+inscribed. This gives an idea of the characteristic length of the domain.
+
+# Arguments
+- `c::DiscreteClosedCurve`: curve to compute the characteristic length
+"""
 function length_scale(c::DiscreteClosedCurve)
-    xmin, xmax = extrema(@view c.x[1, :])
-    ymin, ymax = extrema(@view c.x[2, :])
+    xmin, xmax, ymin, ymax = extrema(c)
     hypot(xmax - xmin, ymax - ymin)
 end
 
+
+@doc raw"""
+    polygon(c::DiscreteClosedCurve)
+
+Construct a polgon compatible with PolygonOps.jl
+
+# Arguments
+- `c::DiscreteClosedCurve`: Curve that defines the polygon
+"""
+function polygon(c::DiscreteClosedCurve)
+    # TODO: attempt to avoid allocating here
+    points = [(col[1], col[2]) for col in eachcol(c.x)]
+    # close loop, since PolygonOps requires that the first and last points be
+    # the same
+    push!(points, points[1])
+
+    return points
+end
+
+
+@doc raw"""
+    mask(c::DiscreteClosedCurve, x::AbstractMatrix, s::DomainSide)
+
+Compute a boolean mask to decide if points are in the correct side
+
+# Arguments
+- `c::DiscreteClosedCurve`: Boundary of the domain
+- `x::AbstractMatrix`: Points, stored in a column-major matrix of size (2, N)
+- `s::DomainSide`: Decide to set `true` for inner or outer points
+"""
+function mask(c::DiscreteClosedCurve, x::AbstractMatrix, s::DomainSide,)
+
+    poly = polygon(c)
+
+    hit = s isa Interior ? 1 : 0
+
+    return [
+        inpolygon((x[1, row], x[2, row]), poly) == hit
+        for row in axes(x, 2)
+    ]
+end
+
+
+@doc raw"""
+    KDTree(c::DiscreteClosedCurve)
+
+Construct a 2d tree for fast geometric operations on the nodes of a boundary
+
+# Arguments
+- `c::DiscreteClosedCurve`: Boundary of the domain
+"""
+function NearestNeighbors.KDTree(c::DiscreteClosedCurve)
+    # TODO: cache tree inside boundary
+    return KDTree(c.x)
+end
+
+@doc raw"""
+    mask(c::DiscreteClosedCurve, x::AbstractMatrix, d::Real)
+
+Compute a boolean mask to decide if points are within a given distance of the
+boundary
+
+# Arguments
+- `c::DiscreteClosedCurve`: Boundary of the domain
+- `x::AbstractMatrix`: Points, stored in a column-major matrix of size (2, N)
+- `d::Real`: Distance to boundary
+"""
+function mask(c::DiscreteClosedCurve, x::AbstractMatrix, d::Real)
+    tree = KDTree(c)
+    inside_cutoff_idxs = inrange(tree, x, d)
+    inside_cutoff_mask = .!isempty.(inside_cutoff_idxs)
+    return inside_cutoff_mask
+end
+
+@doc raw"""
+    make_dummy_curve(x)
+
+Construct storing only the node locations, using unit weights and no information
+normals, curvatures, or complex weights. Used for computing manufactured solutions.
+
+# Arguments
+- `x`: locations of the nodes
+"""
 function make_dummy_curve(x)
-
     dim_x, n = size(x)
-
     one_1d = ones(n)
     zero_nd = zeros((dim_x, n))
     zero_1d = zeros(n)
     zero_cmp=zeros(ComplexF64, n)
-
-
     return DiscreteClosedCurve(
         x,
         zero_nd, #n
@@ -83,7 +184,6 @@ function make_dummy_curve(x)
         one_1d, #w
         zero_cmp,
     )
-
 end
 
 
@@ -172,7 +272,7 @@ nodes in parameter space
 """
 function DiscreteClosedCurve(n_points::Int, ρ::Function)
     # range [0, 2pi) to evaluate parametrization
-   θ = range(0, 2π; length=n_points + 1)[1:(end-1)]
+    θ = range(0, 2π; length=n_points + 1)[1:(end-1)]
     return DiscreteClosedCurve(θ, ρ)
 
 end
@@ -213,8 +313,8 @@ function periodic_spectral_diff(f)
         f_prime_hat = f_hat .* k
     elseif dim == 2
         f_prime_hat = f_hat .* transpose(k) # NOTE: this mysterious minus appeared after changing to col-major
-        # NOTE: the culprit was the ' operator which gives the adjoing in the case of
-        # complex valued vectors... transpose solves this
+    # NOTE: the culprit was the ' operator which gives the adjoing in the case of
+    # complex valued vectors... transpose solves this
     else
         error("dimension $dim not supported")
     end

@@ -253,7 +253,7 @@ function evaluate(
     H::Hypersingular,
     φ::BoundaryDensity,
     target::AbstractMatrix,
-    relative_cutoff=0.05
+    relative_cutoff=0.05 # TODO: make this a struct in the same hierarchy as EvaluationDistance
     ;
     matrix_factory::Function=default_allocator,
 )
@@ -261,36 +261,26 @@ function evaluate(
     m = size(target, 2)
 
     # 1. find points in the correct side of the domain
-    # TODO: encapsulate polygon and NN operations
-    poly = [[col[1], col[2]] for col in eachcol(problem.boundary.x)]
-    push!(poly, problem.boundary.x[:, 1]) # close loop
-    correct_side_mask = [
-        inpolygon((target[1, row], target[2, row]), poly) == 1
-        for row in axes(target, 2)
-    ]
+    correct_side_mask = mask(problem.boundary, target, problem.side)
 
     # 2. find points within cutoff distance
+    distance = length_scale(problem.boundary) * relative_cutoff
+    inside_cutoff_mask = mask(problem.boundary, target, distance)
 
-    cutoff = length_scale(problem.boundary) * relative_cutoff
-
-    # TODO: cache tree inside boundary
-    tree = KDTree(problem.boundary.x)
-    inside_cutoff_idxs = inrange(tree, target, cutoff)
-    inside_cutoff_mask = .!isempty.(inside_cutoff_idxs)
-
-
+    # 3. evaluate accordingly
     far_mask = .!inside_cutoff_mask .& correct_side_mask
     near_mask = inside_cutoff_mask .& correct_side_mask
 
-    # 3. evaluate accordingly
-    D_target = DoubleLayer(problem.equation, problem.boundary, target[:, far_mask]; matrix_factory=matrix_factory, populate_matrix=true)
+    D_target = DoubleLayer(problem.equation, problem.boundary,
+        target[:, far_mask]; matrix_factory=matrix_factory, populate_matrix=true)
     u_far, τ = evaluate(problem, approach, φ, H, D_target, FarEvaluation())
 
     # TODO: look into allocations for slices, look into eachrow
     # branch inside loop
     u_near = evaluate(problem, approach, φ, target[:, near_mask], NearEvaluation())
-    # u_near = 0.
 
+    # NOTE: enzyme doesn't like masked writes, but works fine with indices. find
+    # a workaround to avoid first computing masks and then calling findall
     far_inds = findall(far_mask)
     near_inds = findall(near_mask)
     bad_inds = findall(.!correct_side_mask)
@@ -300,8 +290,6 @@ function evaluate(
     u[far_inds] .= u_far
     u[near_inds] .= u_near
     u[bad_inds] .= NaN
-
-    # TODO: test cases where all/no points are far, near, outside
 
     return u, τ
 end

@@ -67,7 +67,7 @@ include("close_evaluation.jl")
 #
 # exports
 #
-export DiscreteClosedCurve, visualize, make_dummy_curve
+export DiscreteClosedCurve, make_dummy_curve, polygon, mask, length_scale
 
 export DifferentialEquation, Laplace, Helmholtz, Stokes
 export HypersingularCorrection, Sidi, Zeta
@@ -84,7 +84,11 @@ export BoundaryValueProblem, solve, evaluate, solve_and_evaluate
 
 export starfish, ball
 
+export visualize, visualize!
+
 function visualize end
+function visualize! end
+
 
 
 # trick lsp
