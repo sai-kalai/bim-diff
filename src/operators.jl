@@ -184,7 +184,7 @@ function DoubleLayer(
     target::AbstractMatrix,
     ;
     matrix_factory::Function=default_allocator,
-    populate_matrix::Bool=false,
+    populate_matrix::Bool=false, # TODO: make this opt-in
 )
     m = size(target, 2)
     n = size(source, 2)
