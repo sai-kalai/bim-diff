@@ -255,6 +255,8 @@ end
 function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
 
     @show n_vals
+    cutoff = 0.05
+    @show cutoff
 
 
     # useful constants
@@ -274,11 +276,11 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
     x_test = test_locations()
     x_test = [
         x_test;;
-        # ball(0.1, 10);;
-        # ball(0.3, 30);;
-        # ball(0.6, 60);;
-        # # avoid  testing close evaluation for gradient
-        # stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
+        ball(0.1, 10);;
+        ball(0.3, 30);;
+        ball(0.6, 60);;
+        # avoid  testing close evaluation for gradient
+        stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
     ]
 
     # dense grid for plotting
@@ -370,8 +372,6 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
         )
 
         if viz
-            cutoff = 0.05
-            @show cutoff
             u_dense, τ_dense = solve_and_evaluate(
                 BoundaryValueProblem(
                     laplace,
@@ -449,9 +449,9 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
                 Γ
             ),
             indirect,
-            D,
-            H_zeta,
-            D_target,
+            zeta,
+            x_test,
+            cutoff,
         )
         push!(
             num_solutions,
@@ -500,9 +500,9 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
                 Γ
             ),
             indirect,
-            D,
-            H_sidi,
-            D_target,
+            sidi,
+            x_test,
+            cutoff,
         )
         push!(
             num_solutions,
