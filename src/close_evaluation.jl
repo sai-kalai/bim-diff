@@ -95,7 +95,7 @@ v^-(x) = - \frac{1}{2} \varphi(x) - \frac{1}{2\pi i} \text{p.v.} \int_{\Gamma}{\
 - `density::BoundaryDensity`: Density that is the solution to the boundary integral equation associated to `problem`
 """
 function holomorphism_boundary_limit(
-    problem::BoundaryValueProblem{Laplace,Dirichlet,Interior,<:DiscreteClosedCurve},
+    problem::BoundaryValueProblem{Laplace,<:Dirichlet,Interior,<:DiscreteClosedCurve},
     density::BoundaryDensity,
 )
 
