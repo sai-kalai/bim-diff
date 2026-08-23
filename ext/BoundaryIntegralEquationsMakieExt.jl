@@ -26,12 +26,10 @@ function BoundaryIntegralEquations.visualize!(
     parameter::Bool=true,
 )
 
-    x, y = eachrow(b.x)
-
     curve = lines!(
         ax,
-        x,
-        y
+        polygon(b),
+        label="Γ",
         ;
         color=parameter ? (1:size(b, 2)) : :black
     )
