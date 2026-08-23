@@ -292,15 +292,15 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
     x_test = test_locations()
     x_test = [
         x_test;;
-        ball(0.1, 10);;
-        ball(0.3, 30);;
-        ball(0.6, 60);;
-        # avoid  testing close evaluation for gradient
-        stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
+        # ball(0.1, 10);;
+        # ball(0.3, 30);;
+        # ball(0.6, 60);;
+        # # avoid  testing close evaluation for gradient
+        # stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
     ]
 
     # dense grid for plotting
-    n_dense = 200
+    n_dense = 60
     Γ_dense = DiscreteClosedCurve(n_dense, starfish)
     xmin, xmax, ymin, ymax = extrema(Γ_dense)
     xs = range(xmin, xmax, length=n_dense)
