@@ -403,42 +403,90 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
 
             fig, ax = visualize(Γ, false, false)
 
-            # cof = tricontourf!(ax, Γ, x_dense, u_dense, σ;
-            #     levels=range(extrema(u)..., 10))
-            # Colorbar(fig[1, 2], cof)
-            # val = u_dense
-
-            val = log10.(abs.(u_dense - u_exact_dense) .+ eps(eltype(u_dense)))
-
-            outside_mask = mask(Γ, x_dense, Exterior())
-
-            # val[outside_mask] .= NaN
-            val = reshape(val, (n_dense, n_dense))
-
-            lo, hi = extrema(val[.! outside_mask])
-
-            step = (hi-lo) < 5 ? 0.5 : 1
-
-            levels = range(floor(lo), ceil(hi), step=step)
-
-            co = contourf!(
+            cof = tricontourf!(
                 ax,
                 Γ,
-                xs,
-                ys,
-                val,
-                levels=levels,
-                extendlow=:auto,
-                extendhigh=:auto,
+                x_dense,
+                u_dense,
+                σ,
+                mode=:relative,
+                levels=0:0.1:1,)
+
+
+            sc0 = scatter!(
+                ax, x_test, label="Test Locations", strokewidth=1, color=:red,
+                marker=:star4, strokecolor=:black,
             )
 
+            sc1 = scatter!(
+                ax, x_source, label="Point Sources",
+                strokewidth=1,
+                color=data(density_source),
+                # marker=:star8,
+                markersize=15,
+                colormap=:bwr,
+            )
+
+            tks = LinearTicks(7)
 
             Colorbar(
-                fig[1, 2],
-                co;
-                label="log10 error",
-                ticks=levels
+                fig[1, 2], sc1, label="Density",
+                ticks=tks,
+                # vertical=false,
             )
+            Colorbar(
+                fig[1, 3], cof, label="Potential",
+                ticks=tks,
+                # vertical=false,
+            )
+
+            Legend(
+                fig[1, 1], ax,
+                tellwidth=false, tellheight=false,
+                halign=:left,
+                valign=:bottom,
+                labelsize=10,
+                markersize=20,
+                patchsize=(15, 10),     # Size of legend entry boxes (width, height)
+                padding=(4, 4, 4, 4),   # Inner padding around the entire legend box
+                spacing=2,              # Vertical spacing between legend entries
+                margin=(5, 10, 25, 10)     # Outer margin between legend and axis bounds
+            )
+
+            # val = log10.(abs.(u_dense - u_exact_dense) .+ eps(eltype(u_dense)))
+            # outside_mask = mask(Γ, x_dense, Exterior())
+            #
+            # val[outside_mask] .= NaN
+            #
+            #
+            # val = reshape(val, (n_dense, n_dense))
+            #
+            # lo, hi = extrema(val[.! outside_mask])
+            #
+            # step = (hi-lo) < 5 ? 0.5 : 1
+            #
+            # levels = range(floor(lo), ceil(hi), step=step)
+            #
+            # co = contourf!(
+            #     ax,
+            #     Γ,
+            #     xs,
+            #     ys,
+            #     val,
+            #     mode=:relative,
+            #     levels=0:0.1:1,
+            #     # levels=levels,
+            #     extendlow=:auto,
+            #     extendhigh=:auto,
+            # )
+            #
+            #
+            # Colorbar(
+            #     fig[1, 2],
+            #     co;
+            #     label="log10 error",
+            #     ticks=levels,
+            # )
 
             return fig, ax
         end
