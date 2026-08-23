@@ -91,7 +91,7 @@ get_linestyle(::Type{<:NumericalSolution{S,Indirect}}) where {S<:DomainSide} = :
 get_linestyle(s::NumericalSolution) = get_linestyle(typeof(s))
 get_marker(data) = begin
     if data == :solution
-        return :circle
+        return :utriangle
     elseif data == :boundary
         return :rect
     end
@@ -148,6 +148,17 @@ function plot_errors(
 
         st = solution_style(first(sols))
 
+
+        # distinguish lines that end up being the same
+        lw = first(sols) isa DirichletSolution{<:DomainSide,Indirect,Sidi} ? 3 : 2
+
+        rt = first(sols) isa DirichletSolution{<:DomainSide,Indirect,Sidi} ? pi/2 : 0.
+        rt = first(sols) isa NumericalSolution{<:DomainSide,Indirect} ? pi/2 : 0.
+
+        ms = 12
+
+        al = 0.6
+
         scatterlines!(
             ax,
             ns,
@@ -156,8 +167,11 @@ function plot_errors(
             linestyle=st.linestyle,
             color=st.color,
             marker=get_marker(:solution),
-            markersize=12,
-            linewidth=2,
+            linewidth=lw,
+            strokewidth=1,
+            markersize=ms,
+            alpha=al,
+            rotation=rt
         )
 
         trace_errs = [
@@ -173,8 +187,10 @@ function plot_errors(
             linestyle=st.linestyle,
             color=st.color,
             marker=get_marker(:boundary),
-            markersize=12,
             linewidth=2,
+            strokewidth=1,
+            markersize=ms,
+            alpha=al,
         )
 
     end
