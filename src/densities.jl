@@ -62,7 +62,7 @@ end
 # # Fallback to prevent infinite loops if it's already the right type
 # Base.convert(::Type{T}, density::T) where {T<:AbstractBoundaryDensity} = density
 
-Base.convert(::Type{T}, density::AbstractBoundaryDensity) where {T<:AbstractVector} = T(data(density))
+Base.convert(::Type{T}, density::AbstractBoundaryDensity) where {T<:AbstractArray} = T(data(density))
 
 # Base.length(density::AbstractBoundaryDensity) = length(data(density))
 
