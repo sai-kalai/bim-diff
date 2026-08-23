@@ -66,11 +66,8 @@ function Makie.tricontourf!(
     kwargs...
 )
 
-    ax = BoundaryIntegralEquations.visualize!(ax, b, false)
-
     # extract from col-major ordering into vector of tuples
     points = [Tuple(p) for p in eachcol(positions)]
-    tmp = copy(points)
     # make polygon from vertices of boundary
     poly = polygon(b)
 
