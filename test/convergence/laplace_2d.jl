@@ -247,8 +247,8 @@ function plot_errors(
             "Direct",
             "Indirect",
             # color
-            "Dirichlet (Zeta)",
-            "Dirichlet (Sidi)",
+            "Dirichlet (FD)",
+            "Dirichlet (Richardson)",
             "Neumann",
             # marker
             "Solution",
