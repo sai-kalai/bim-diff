@@ -1,25 +1,9 @@
 
-abstract type AbstractBoundaryDensity end
-
-# TODO type stability
-struct BoundaryDensity{T<:AbstractVector} <: AbstractBoundaryDensity
-    φ::T
-end
 function data(density::BoundaryDensity)
     density.φ
 end
-abstract type BoundaryCondition <: AbstractBoundaryDensity end
-
-
-struct Dirichlet{T<:AbstractVector} <: BoundaryCondition
-    σ::T
-end
-
 function data(density::Dirichlet)
     density.σ
-end
-struct Neumann{T<:AbstractVector} <: BoundaryCondition
-    τ::T
 end
 function data(density::Neumann)
     density.τ
