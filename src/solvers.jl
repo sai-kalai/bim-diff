@@ -1,20 +1,3 @@
-@doc raw"""
-    BoundaryValueProblem
-
-Represents a boundary value problem
-
-"""
-struct BoundaryValueProblem{
-    E<:DifferentialEquation,
-    C<:BoundaryCondition,
-    S<:DomainSide,
-    B<:AbstractManifold,
-}
-    equation::E
-    bc::C
-    side::S
-    boundary::B
-end
 
 # TODO: instead, overload commonsolve
 function solve_linear_system(A, b; algorithm=RFLUFactorization())
@@ -29,9 +12,6 @@ function solve_linear_system(A, b; algorithm=RFLUFactorization())
     # solving convergence_study(20:20:200) in about 10 ms
 end
 
-abstract type EvaluationDistance end
-struct NearEvaluation end
-struct FarEvaluation end
 
 
 # two variants are given: one where the operators are precomputed, and one that
@@ -162,7 +142,8 @@ function solve_and_evaluate(
     problem::BoundaryValueProblem{Laplace,<:Dirichlet,Interior,<:DiscreteClosedCurve},
     approach::Direct,
     correction::HypersingularCorrection,
-    target::AbstractMatrix;
+    target::AbstractMatrix
+    ;
     matrix_factory::Function=default_allocator,
 )::Tuple{AbstractVector,Neumann}
     density = solve(problem, approach, correction; matrix_factory=matrix_factory)
@@ -205,7 +186,7 @@ function evaluate(
     φ::BoundaryDensity,
     H::Hypersingular,
     D_target::DoubleLayer,
-    ::FarEvaluation,
+    ::PotentialTheory,
 )::Tuple{AbstractVector,Neumann}
     τ = H * φ
     u = D_target * φ
@@ -218,7 +199,7 @@ function evaluate(
     approach::Indirect,
     φ::BoundaryDensity,
     target::AbstractMatrix,
-    ::NearEvaluation
+    ::CauchyIntegral
 )
     v_lim = holomorphism_boundary_limit(
         problem,
@@ -273,11 +254,11 @@ function evaluate(
 
     D_target = DoubleLayer(problem.equation, problem.boundary,
         target[:, far_mask]; matrix_factory=matrix_factory, populate_matrix=true)
-    u_far, τ = evaluate(problem, approach, φ, H, D_target, FarEvaluation())
+    u_far, τ = evaluate(problem, approach, φ, H, D_target, PotentialTheory())
 
     # TODO: look into allocations for slices, look into eachrow
     # branch inside loop
-    u_near = evaluate(problem, approach, φ, target[:, near_mask], NearEvaluation())
+    u_near = evaluate(problem, approach, φ, target[:, near_mask], CauchyIntegral())
 
     # NOTE: enzyme doesn't like masked writes, but works fine with indices. find
     # a workaround to avoid first computing masks and then calling findall
@@ -335,7 +316,7 @@ function solve_and_evaluate(
 
     φ = solve(problem, approach, D)
 
-    u, τ = evaluate(problem, approach, φ, H, D_target, FarEvaluation())
+    u, τ = evaluate(problem, approach, φ, H, D_target, PotentialTheory())
 
     return u, τ
 end
