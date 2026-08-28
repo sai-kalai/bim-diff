@@ -15,134 +15,127 @@
 using Test
 using Revise
 using StaticArrays
-
 using CairoMakie
-
-
 using LinearAlgebra
-
+using BenchmarkTools
 using BoundaryIntegralEquations
 
 
 include("../fixtures.jl")
 
-abstract type Solution end
-abstract type NumericalSolution{S,A} end
 
-# wip
-struct NumericalSolution2{
-    P<:BoundaryValueProblem,
-    A<:Approach,
-    C<:AbstractSingularCorrection
-}
-    n::Int
-    p::P
-    u::Vector{Float64}
-    cauchy_data::Vector{Float64}
-    correction::C
-    u_err
-    cauchy_data_err
-    function NumericalSolution2(
-        p::BoundaryValueProblem,
-        u::Vector{Float64},
-        cauchy_data::Vector{Float64}
+@doc raw"""
+    SimulationContext
+
+Records what parameters were used to run a particular simulation
+
+"""
+struct SolverParameters
+    approach_t::Type{<:Approach}
+    bdrycond_t::Type{<:BoundaryCondition}
+    solution_t::Type{<:NumericalSolution}
+    correction::AbstractSingularCorrection
+    evalmethod::EvaluationMethod
+end
+
+function get_kwargs(k::SolverParameters)
+    # each plot should have a script that determines the looks, not one style for all
+
+    marker = k.solution_type <: BVPSolution ? :circle :
+             k.solution_type <: BDPSolution ? :rect :
+             error()
+
+    linestyle = k.approach_t <: Direct ? :dash :
+                k.approach_t <: Indirect ? :dot :
+                error()
+
+    color = k.evalmethod isa PotentialTheory ? :red :
+            k.evalmethod isa DistancePolicy ? k.evalmethod.cutoff :
+            error(k.evalmethod)
+
+
+    # linewidth = k.evalmethod isa DistancePolicy ? 1.5 + log10(max(k.evalmethod.cutoff, 1e-12)) * -0.3 :
+    #             k.evalmethod isa PotentialTheory ? 2 :
+    #             k.evalmethod isa CauchyIntegral ? 1 :
+    #             error()
+    linewidth=1.
+    return (;
+        marker=marker,
+        linestyle=linestyle,
+        color=color,
+        linewidth=linewidth
     )
-        return NumericalSolution2(length(p.boundary), p, u, cauchy_data)
-    end
+
 end
 
-struct DirichletSolution{S<:DomainSide,A<:Approach,C<:HypersingularCorrection} <: NumericalSolution{S,A}
-    n
-    u::Vector{Float64}
-    τ::Vector{Float64}
-    correction::C
-    u_err
-    τ_err
+@doc raw"""
+    SolutionMetadata
+
+Contains information about a simulation such as runtime
+
+"""
+struct SolutionMetadata
+    # initial sketch, maybe include Tryal instance here
+    trial::Union{BenchmarkTools.Trial,Nothing}
 end
 
-struct NeumannSolution{S<:DomainSide,A<:Approach} <: NumericalSolution{S,A}
-    n
-    u::Vector{Float64}
-    σ::Vector{Float64}
-    u_err
-    σ_err
+const SolutionWithMetadata = Tuple{
+    NumericalSolution,SolutionMetadata
+}
+function SolutionWithMetadata(sol, md)
+    return SolutionWithMetadata((sol, md))
 end
 
-# unused
-struct ExactSolution{S<:DomainSide} <: Solution
-    n
-    u::Vector{Float64}
-    σ::Vector{Float64}
-    τ::Vector{Float64}
+@doc raw"""
+    ConvergenceResult
+
+Stores the metadata and data associated with a group of simulation runs with
+different parameters for several discretization sizes
+
+"""
+struct ConvergenceResult{T}
+    # metadata: parameters used during the runs
+    n_vals::Vector{Int}
+    cutoff_vals::Vector{T}
+    fd_acc_vals::Vector{Int}
+    kr_acc_vals::Vector{Int}
+
+    x::Matrix{T} # x locations in col-major
+
+    u_exact::Vector{T} # exact solution at x points
+    neumann_exact::Dict{Int,Vector{T}} # exact neumann data for each n val
+    dirichlet_exact::Dict{Int,Vector{T}}
+
+    solutions::Dict{
+        SolverParameters,Vector{SolutionWithMetadata}
+    } # results of the simulations for several n values, grouped by solver parameters
 end
 
-
-function get_trace_err(s::DirichletSolution)
-    return s.τ_err
-end
-function get_trace_err(s::NeumannSolution)
-    return s.σ_err
-end
-
-solution_label(sol) = begin
-    bc =
-        sol isa DirichletSolution ? "Dirichlet" :
-        sol isa NeumannSolution ? "Neumann" :
-        "Unknown"
-
-    approach =
-        nameof(typeof(sol).parameters[2])
-
-    correction =
-        sol isa DirichletSolution ?
-        string(nameof(typeof(sol).parameters[3])) :
-        ""
-
-    isempty(correction) ?
-    "$bc / $approach" :
-    "$bc / $approach / $correction"
-end
-
-get_color(::Type{DirichletSolution{S,A,Sidi}}) where {S<:DomainSide,A<:Approach} = :blue
-get_color(::Type{DirichletSolution{S,A,Zeta}}) where {S<:DomainSide,A<:Approach} = :red
-get_color(::Type{NeumannSolution{S,A}}) where {S<:DomainSide,A<:Approach} = :lawngreen
-get_color(s::NumericalSolution) = get_color(typeof(s))
-get_linestyle(::Type{<:NumericalSolution{S,Direct}}) where {S<:DomainSide} = :dot
-get_linestyle(::Type{<:NumericalSolution{S,Indirect}}) where {S<:DomainSide} = :dash
-get_linestyle(s::NumericalSolution) = get_linestyle(typeof(s))
-get_marker(data) = begin
-    if data == :solution
-        return :utriangle
-    elseif data == :boundary
-        return :rect
-    end
-end
-
-function solution_style(sol)
-
-    color = get_color(sol)
-    linestyle = get_linestyle(sol)
-
-    return (; linestyle, color,)
+function ConvergenceResult(
+    n_vals::Vector{Int},
+    cutoff_vals::Vector{T},
+    fd_acc_vals::Vector{Int},
+    kr_acc_vals::Vector{Int},
+    x::Matrix{T},
+    u_exact::Vector{T},
+) where {T}
+    return ConvergenceResult{eltype(T)}(
+        n_vals,
+        cutoff_vals,
+        fd_acc_vals,
+        kr_acc_vals,
+        x,
+        u_exact,
+        Dict{Int,Vector{T}}(), # exact neumann and dirichlet data for each n value
+        Dict{Int,Vector{T}}(), # exact neumann and dirichlet data for each n value
+        Dict{SolverParameters,Vector{SolutionWithMetadata}}(),
+    )
 end
 
 
 function plot_errors(
-    solutions::Vector{NumericalSolution},
+    res::ConvergenceResult,
 )
-    # Group by configuration
-    groups = Dict{String,Vector{NumericalSolution}}()
-
-    for sol in solutions
-
-        key = solution_label(sol)
-
-        if !haskey(groups, key)
-            groups[key] = NumericalSolution[]
-        end
-
-        push!(groups[key], sol)
-    end
 
     # Plot
     fig = Figure(
@@ -155,26 +148,33 @@ function plot_errors(
         ylabel="L∞-error",
         yscale=log10,
         xscale=log10,
-        xticks=LinearTicks(5)
+        xticks=LinearTicks(5),
     )
+    ylims!(ax, (1e-16, 1e+2))
 
-    ns = nothing
-    for (label, sols) in groups
+    Colorbar(fig[1, 2], limits=extrema(res.cutoff_vals))
 
-        sort!(sols, by=s -> s.n)
+    for (key, sols) in res.solutions
 
-        ns = [s.n for s in sols]
+        sort!(sols, by=s -> numpoints(s))
 
-        u_errs = [s.u_err for s in sols]
+        ns = [numpoints(s) for s in sols]
 
-        st = solution_style(first(sols))
+        errs = key.solution_type <: BVPSolution ? [norm(s.u - res.u_exact, Inf) for s in sols] :
+               key.solution_type <: BDPSolution ? begin
+            key.bc_type <: Dirichlet ? [norm(s.u - res.neumann_exact[numpoints(s)], Inf) for s in sols] :
+            key.bc_type <: Neumann ? [norm(s.u - res.neumann_exact[numpoints(s)], Inf) for s in sols] : 0
+        end : 0
 
+
+
+        kwargs = get_kwargs(key)
 
         # distinguish lines that end up being the same
-        lw = first(sols) isa DirichletSolution{<:DomainSide,Indirect,Sidi} ? 3 : 2
-
-        rt = first(sols) isa DirichletSolution{<:DomainSide,Indirect,Sidi} ? pi/2 : 0.
-        rt = first(sols) isa NumericalSolution{<:DomainSide,Indirect} ? pi/2 : 0.
+        # lw = first(sols) isa DirichletSolution{<:DomainSide,Indirect,Sidi} ? 3 : 2
+        #
+        # rt = first(sols) isa DirichletSolution{<:DomainSide,Indirect,Sidi} ? pi/2 : 0.
+        # rt = first(sols) isa NumericalSolution{<:DomainSide,Indirect} ? pi/2 : 0.
 
         ms = 12
 
@@ -183,38 +183,23 @@ function plot_errors(
         scatterlines!(
             ax,
             ns,
-            u_errs,
-            label=label,
-            linestyle=st.linestyle,
-            color=st.color,
-            marker=get_marker(:solution),
-            linewidth=lw,
+            errs,
+            # linestyle=st.linestyle,
+            # color=st.color,
+            # marker=get_marker(:solution),
+            # linewidth=lw,
+            # strokewidth=1,
+            # markersize=ms,
+            # alpha=al,
+            # rotation=rt
+            ;
+            colorrange=extrema(res.cutoff_vals),
             strokewidth=1,
-            markersize=ms,
-            alpha=al,
-            rotation=rt
+            kwargs...
         )
-
-        trace_errs = [
-            get_trace_err(s)
-            for s in sols
-        ]
-
-        scatterlines!(
-            ax,
-            ns,
-            trace_errs,
-            label="$label trace",
-            linestyle=st.linestyle,
-            color=st.color,
-            marker=get_marker(:boundary),
-            linewidth=2,
-            strokewidth=1,
-            markersize=ms,
-            alpha=al,
-        )
-
     end
+
+
 
 
 
@@ -236,96 +221,138 @@ function plot_errors(
     #     conv_style...
     # )
 
+
+
+    @show "HHH"
     α = 0.1
     lines!(ax,
-        ns, # use last iteration for getting ns
-        exp.(-α .* ns),
+        res.n_vals, # use last iteration for getting ns
+        exp.(-α .* res.n_vals),
         ;
         color=:grey,
         conv_style...
     )
 
-    Legend(
-        fig[1, 1],
-        [
-            # linestyle -> approach
-            LineElement(linestyle=get_linestyle(DirichletSolution{DomainSide,Direct})),
-            LineElement(linestyle=get_linestyle(DirichletSolution{DomainSide,Indirect})),
-            # color -> bc
-            MarkerElement(color=get_color(DirichletSolution{DomainSide,Approach,Zeta}), marker=:circle),
-            MarkerElement(color=get_color(DirichletSolution{DomainSide,Approach,Sidi}), marker=:circle),
-            MarkerElement(color=get_color(NeumannSolution{DomainSide,Approach}), marker=:circle),
-            # marker -> solution vs cauchy datum
-            MarkerElement(color=:black, marker=get_marker(:solution)),
-            MarkerElement(color=:black, marker=get_marker(:boundary)),
-
-            # convergence rates
-            LineElement(; color=:grey, conv_style...),
-            # LineElement(; color=:black, conv_style...)
-        ],
-        [
-            # linestyle
-            "Direct",
-            "Indirect",
-            # color
-            "Dirichlet (FD)",
-            "Dirichlet (Richardson)",
-            "Neumann",
-            # marker
-            "Solution",
-            "Boundary Trace",
-            # convergence line
-            "O(exp(-$α n))",
-            # "O(n^-$(order_offset))",
-        ],
-        "Legend";
-        tellwidth=false,
-        halign=:left,
-        valign=:bottom
-    )
+    # Legend(
+    #     fig[1, 1],
+    #     [
+    #         # linestyle -> approach
+    #         LineElement(linestyle=get_linestyle(DirichletSolution{DomainSide,Direct})),
+    #         LineElement(linestyle=get_linestyle(DirichletSolution{DomainSide,Indirect})),
+    #         # color -> bc
+    #         MarkerElement(color=get_color(DirichletSolution{DomainSide,Approach,Zeta}), marker=:circle),
+    #         MarkerElement(color=get_color(DirichletSolution{DomainSide,Approach,Sidi}), marker=:circle),
+    #         MarkerElement(color=get_color(NeumannSolution{DomainSide,Approach}), marker=:circle),
+    #         # marker -> solution vs cauchy datum
+    #         MarkerElement(color=:black, marker=get_marker(:solution)),
+    #         MarkerElement(color=:black, marker=get_marker(:boundary)),
+    #
+    #         # convergence rates
+    #         LineElement(; color=:grey, conv_style...),
+    #         # LineElement(; color=:black, conv_style...)
+    #     ],
+    #     [
+    #         # linestyle
+    #         "Direct",
+    #         "Indirect",
+    #         # color
+    #         "Dirichlet (FD)",
+    #         "Dirichlet (Richardson)",
+    #         "Neumann",
+    #         # marker
+    #         "Solution",
+    #         "Boundary Trace",
+    #         # convergence line
+    #         "O(exp(-$α n))",
+    #         # "O(n^-$(order_offset))",
+    #     ],
+    #     "Legend";
+    #     tellwidth=false,
+    #     halign=:left,
+    #     valign=:bottom
+    # )
 
     fig, ax
 end
 
 
+function add_solutions!(res::ConvergenceResult, correction, evalmethod, sols_with_md...)
+    foreach(sols_with_md) do sol_with_md
+        (sol, md) = sol_with_md
+        push!(
+            get!(
+                res.solutions,
+                SolverParameters(
+                    approach(sol.alg),
+                    boundary_condition(sol),
+                    typeof(sol),
+                    correction,
+                    evalmethod,
+                ),
+                Vector{Float64}() # why vector of float...?
+            ),
+            sol_with_md
+        )
+    end
+
+end
+
+function Base.show(io::IO, ::MIME"text/plain", res::ConvergenceResult{T}) where {T}
+    println(io, "ConvergenceResult{", T, "}:")
+    println(io, "  n_vals:          ", res.n_vals)
+    println(io, "  cutoff_vals:     ", res.cutoff_vals)
+    println(io, "  fd_acc_vals:     ", res.fd_acc_vals)
+    println(io, "  kr_acc_vals:     ", res.kr_acc_vals)
+    println(io, "  x:               ", summary(res.x))
+    println(io, "  u_exact:         ", summary(res.u_exact))
+    println(io, "  neumann_exact:   Dict with ", length(res.neumann_exact), " entries")
+    println(io, "  dirichlet_exact: Dict with ", length(res.dirichlet_exact), " entries")
+    print(io, "  solutions:       ", length(res.solutions), "-element", typeof(res.solutions))
+end
 
 @doc raw"""
-    convergence_study(n_vals=20:20:200, accuracy_order=32)
 
 run all methods with different parameters
 
 """
-function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
-
+function convergence_study(;
+    n_vals=20:20:400,
+    cutoff_vals=[0.0, 0.01, 0.05, 0.1, 0.5],
+    fd_acc_vals=[4, 8, 16, 32],
+    kr_acc_vals=fd_acc_vals,
+    approach_types=[Direct, Indirect],
+    bc_types=[Dirichlet, Neumann],
+    viz=false,
+    # indicate how to reserve memory
+    allocator=(_m, _n) -> Matrix{Float64}(undef, _m, _n),
+    benchmark=false,
+)
     @show n_vals
-    cutoff = 0.05
-    @show cutoff
+    @show cutoff_vals
+    @show fd_acc_vals
+    @show kr_acc_vals
 
 
-
-    # useful constants
+    # common variables
     laplace = Laplace()
     interior = Interior()
     exterior = Exterior()
-    kapur_rokhlin = KapurRokhlin(accuracy_order)
-    zeta = Zeta(accuracy_order)
-    sidi = Sidi()
     direct = Direct()
     indirect = Indirect()
 
-    # indicate how to reserve memory
-    allocator = (_m, _n) -> Matrix{Float64}(undef, _m, _n)
+    sidi = Sidi()
 
     # evaluation points for convergence results
     x_test = test_locations()
     x_test = [
         x_test;;
-        # ball(0.1, 10);;
-        # ball(0.3, 30);;
-        # ball(0.6, 60);;
-        # # avoid  testing close evaluation for gradient
-        # stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
+        ball(0.1, 10);;
+        ball(0.3, 30);;
+        ball(0.6, 60);;
+        # avoid  testing close evaluation for gradient
+        stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
     ]
+
 
     # dense grid for plotting
     n_dense = 60
@@ -338,340 +365,186 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
 
     # get known solution at test and plot points
     x_source, density_source = point_sources()
-
-    ds2 = similar(density_source)
-
-    for i in eachindex(ds2)
-        ds2[i] = density_source[mod1(i+5, length(ds2))]
-    end
-
-    density_source .= ds2
-
     density_source = BoundaryDensity(density_source)
 
-
+    # operators for exact solution at test and plot points
     Γ_source = make_dummy_curve(x_source)
     S_manuf = SingleLayer(laplace, Γ_source, x_test; matrix_factory=allocator, populate_matrix=true)
     S_manuf_dense = SingleLayer(laplace, Γ_source, x_dense; populate_matrix=true)
     u_exact = S_manuf * density_source # exact solution at test points
     u_exact_dense = S_manuf_dense * density_source
 
+    # accumulate results
+    res = ConvergenceResult(collect(n_vals), cutoff_vals, fd_acc_vals, kr_acc_vals,
+        x_test, u_exact)
+
+
     # verify that results match MATLAB version
     u_exact_reference = reference_exact_solution()
-    # @test u_exact[1:length(u_exact_reference)] ≈ u_exact_reference atol = 1e-15
+    @test u_exact[1:length(u_exact_reference)] ≈ u_exact_reference atol = 1e-15
 
-    # scatter!(ax, x_test[:, 1], x_test[:, 2], color=u_exact)
+    # storage for produced solutions
 
-    # wait(display(fig))
+    for n in n_vals
 
-    # println("Printing max-norm errors")
-    # println("Interior")
+        @show n
 
-    num_solutions = Vector{NumericalSolution}()
+        # boundary discretization
+        Γ = DiscreteClosedCurve(n, starfish)
 
-    for (i, n) ∈ enumerate(n_vals)
-
-        Γ = DiscreteClosedCurve(n, starfish) # boundary of the domain
-
-
-        # target: domain boundary, source: manufactured solution point sources
-        S_source = SingleLayer(laplace, Γ_source, Γ.x) # ok
-        D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x) # ok
+        # operators for computing boundary conditions from point sources
+        S_source = SingleLayer(laplace, Γ_source, Γ.x)
+        D_star_source = AdjointDoubleLayer(laplace, Γ_source, Γ.x)
         populate_matrices!(Γ_source, Γ.x, S_source, D_star_source; target_normals=Γ.n)
-
-
         # TODO: test this
         # @assert D_star_source.matrix ≈ AdjointDoubleLayer(laplace, Γ.x, Γ.n, Γ_source; matrix_factory=allocator).matrix
-
-        σ = S_source * density_source # Dirichlet BC
+        σ_exact = S_source * density_source # Dirichlet BC
         τ_exact = D_star_source * density_source # Neumann BC exact solution
 
 
-        S = SingleLayer(laplace, Γ, kapur_rokhlin,) # ok
-        D = DoubleLayer(laplace, Γ,) # ok
-        D_star = AdjointDoubleLayer(laplace, Γ,)  # ok
-        H_zeta = Hypersingular(laplace, Γ, zeta,) # ok
-        H_sidi = Hypersingular(laplace, Γ, sidi,) # ok
-        populate_matrices!(Γ, S, D, D_star, H_sidi, H_zeta)
+        res.dirichlet_exact[n] = σ_exact
+        res.neumann_exact[n] = τ_exact
 
-        S_target = SingleLayer(laplace, Γ, x_test) # ok
-        D_target = DoubleLayer(laplace, Γ, x_test) # ok
-        populate_matrices!(Γ, x_test, S_target, D_target)
+        for side in [interior,], bc in [Dirichlet(σ_exact), Neumann(τ_exact)]
 
-        # Dirichlet Zeta Direct
-        u, τ = solve_and_evaluate(
-            BoundaryValueProblem(
-                laplace,
-                Dirichlet(σ),
-                interior,
-                Γ
-            ),
-            direct,
-            D_star,
-            H_zeta,
-            S_target,
-            D_target,
-        )
+            if !any(T -> bc isa T, bc_types)
+                @warn "skipping $bc"
+                continue
+            end
 
-        if viz
-            u_dense, τ_dense = solve_and_evaluate(
-                BoundaryValueProblem(
-                    laplace,
-                    Dirichlet(σ),
-                    interior,
-                    Γ
-                ),
-                indirect,
-                zeta,
-                x_dense,
-                cutoff,
-            )
+            bvp = BoundaryValueProblem(laplace, bc, side, Γ)
 
-            fig, ax = visualize(Γ, false, false)
+            # NOTE: actually, operators of different orders can be precomputed
+            # in parallel using tuple comprenhension
+            # ops = (
+            #   (SingleLayer(laplace, Γ, KapurRokhlin(x)) for x kr_acc_vals)...,
+            #   (Hypersingular(laplace, Γ, Zeta(x)) for x fd_acc_vals)...,
+            #   Sidi(),
+            #   )
+            # populate_matrices!(Γ, ops)
+            # for op in ops
+            #    solve_and_evaluate(
+            #       prob, approach, (op, op isa SingleLayer ? D_star : op isa Hypersingular?  etc...
+            #    ) -> requires putting correct args
+            # end
 
-            cof = tricontourf!(
-                ax,
-                Γ,
-                x_dense,
-                u_dense,
-                σ,
-                mode=:relative,
-                levels=0:0.1:1,)
+            corrections = bc isa Dirichlet ? [Sidi(); [Zeta(x) for x in fd_acc_vals]] :
+                          bc isa Neumann ? [KapurRokhlin(x) for x in kr_acc_vals] :
+                          error("invalid bc")
 
 
-            sc0 = scatter!(
-                ax, x_test, label="Test Locations", strokewidth=1, color=:red,
-                marker=:star4, strokecolor=:black,
-            )
+            for correction in corrections
 
-            sc1 = scatter!(
-                ax, x_source, label="Point Sources",
-                strokewidth=1,
-                color=data(density_source),
-                # marker=:star8,
-                markersize=15,
-                colormap=:bwr,
-            )
 
-            tks = LinearTicks(7)
+                if Direct in approach_types
+                    # direct approach
 
-            Colorbar(
-                fig[1, 2], sc1, label="Density",
-                ticks=tks,
-                # vertical=false,
-            )
-            Colorbar(
-                fig[1, 3], cof, label="Potential",
-                ticks=tks,
-                # vertical=false,
-            )
+                    u, cauchy_data = solve_and_evaluate(
+                        bvp,
+                        direct,
+                        correction,
+                        x_test,
+                    )
 
-            Legend(
-                fig[1, 1], ax,
-                tellwidth=false, tellheight=false,
-                halign=:left,
-                valign=:bottom,
-                labelsize=10,
-                markersize=20,
-                patchsize=(15, 10),     # Size of legend entry boxes (width, height)
-                padding=(4, 4, 4, 4),   # Inner padding around the entire legend box
-                spacing=2,              # Vertical spacing between legend entries
-                margin=(5, 10, 25, 10)     # Outer margin between legend and axis bounds
-            )
+                    if benchmark
+                        trial = @benchmark solve_and_evaluate(
+                            $bvp,
+                            $direct,
+                            $correction,
+                            $x_test,
+                        )
+                    else
+                        trial = nothing
+                    end
 
-            # val = log10.(abs.(u_dense - u_exact_dense) .+ eps(eltype(u_dense)))
-            # outside_mask = mask(Γ, x_dense, Exterior())
-            #
-            # val[outside_mask] .= NaN
-            #
-            #
-            # val = reshape(val, (n_dense, n_dense))
-            #
-            # lo, hi = extrema(val[.! outside_mask])
-            #
-            # step = (hi-lo) < 5 ? 0.5 : 1
-            #
-            # levels = range(floor(lo), ceil(hi), step=step)
-            #
-            # co = contourf!(
-            #     ax,
-            #     Γ,
-            #     xs,
-            #     ys,
-            #     val,
-            #     mode=:relative,
-            #     levels=0:0.1:1,
-            #     # levels=levels,
-            #     extendlow=:auto,
-            #     extendhigh=:auto,
-            # )
-            #
-            #
-            # Colorbar(
-            #     fig[1, 2],
-            #     co;
-            #     label="log10 error",
-            #     ticks=levels,
-            # )
+                    # dummy placeholder for now
+                    bie_sln = BIESolution(
+                        zeros(n),
+                        BIEProblem{Direct}(bvp),
+                        BIEAlgorithm{Direct}(correction),
+                    )
 
-            return fig, ax
+                    bvp_sln = BVPSolution(
+                        u,
+                        bie_sln,
+                        bvp,
+                        BVPAlgorithm{Direct}(),
+                    )
+                    bdp_sln = BDPSolution(
+                        data(cauchy_data),
+                        bie_sln,
+                        BDProblem{Direct}(bvp),
+                        BDPAlgorithm{Direct}(),
+                    )
+
+                    add_solutions!(res, correction, PotentialTheory(),
+                        SolutionWithMetadata(bvp_sln, SolutionMetadata(trial)),
+                        SolutionWithMetadata(bdp_sln, SolutionMetadata(trial))
+                    )
+                end
+
+                if Indirect in approach_types
+                    # indirect approach: cutoff is available
+                    for cutoff in cutoff_vals
+                        if bc isa Neumann
+                            continue
+                        end
+
+                        if benchmark
+                            trial = @benchmark solve_and_evaluate(
+                                $bvp,
+                                $indirect,
+                                $correction,
+                                $x_test,
+                                $cutoff,
+                            )
+                        else
+                            trial = nothing
+                        end
+                        u, cauchy_data = solve_and_evaluate(
+                            bvp,
+                            indirect,
+                            correction,
+                            x_test,
+                            cutoff,
+                        )
+
+                        # dummy placeholder
+                        bie_sln = BIESolution(
+                            zeros(n),
+                            BIEProblem{Indirect}(bvp),
+                            BIEAlgorithm{Indirect}(),
+                        )
+
+                        method = cutoff == 0. ? PotentialTheory() :
+                                 isinf(cutoff) ? CauchyIntegral() :
+                                 DistancePolicy(cutoff)
+
+                        bvp_sln = BVPSolution(
+                            u,
+                            bie_sln,
+                            bvp,
+                            BVPAlgorithm{Indirect}(method),
+                        )
+
+                        bdp_sln = BDPSolution(
+                            data(cauchy_data),
+                            bie_sln,
+                            BDProblem{Indirect}(bvp),
+                            BDPAlgorithm{Indirect}(correction),
+                        )
+
+                        add_solutions!(res, correction, method,
+                            SolutionWithMetadata(bvp_sln, SolutionMetadata(trial)),
+                            SolutionWithMetadata(bdp_sln, SolutionMetadata(trial))
+                        )
+                    end
+                end
+            end
         end
-
-
-        push!(
-            num_solutions,
-            DirichletSolution{Interior,Direct,Zeta}(
-                n,
-                u,
-                τ,
-                zeta,
-                norm(u_exact - u, Inf),
-                norm(τ_exact - τ, Inf)
-            )
-        )
-
-        # Dirichlet Zeta Indirect
-        u, τ = solve_and_evaluate(
-            BoundaryValueProblem(
-                laplace,
-                Dirichlet(σ),
-                interior,
-                Γ
-            ),
-            indirect,
-            zeta,
-            x_test,
-            cutoff,
-        )
-        push!(
-            num_solutions,
-            DirichletSolution{Interior,Indirect,Zeta}(
-                n,
-                u,
-                τ,
-                zeta,
-                norm(u_exact - u, Inf),
-                norm(τ_exact - τ, Inf)
-            )
-        )
-
-        # Dirichlet Sidi Direct
-        # hypersingular operator using Sidi's staggered grid
-        u, τ = solve_and_evaluate(
-            BoundaryValueProblem(
-                laplace,
-                Dirichlet(σ),
-                interior,
-                Γ
-            ),
-            direct,
-            D_star,
-            H_sidi,
-            S_target,
-            D_target,
-        )
-        push!(
-            num_solutions,
-            DirichletSolution{Interior,Direct,Sidi}(
-                n,
-                u,
-                τ,
-                sidi,
-                norm(u_exact - u, Inf),
-                norm(τ_exact - τ, Inf)
-            )
-        )
-        # Dirichlet Sidi Indirect
-        u, τ = solve_and_evaluate(
-            BoundaryValueProblem(
-                laplace,
-                Dirichlet(σ),
-                interior,
-                Γ
-            ),
-            indirect,
-            sidi,
-            x_test,
-            cutoff,
-        )
-        push!(
-            num_solutions,
-            DirichletSolution{Interior,Indirect,Sidi}(
-                n,
-                u,
-                τ,
-                sidi,
-                norm(u_exact - u, Inf),
-                norm(τ_exact - τ, Inf)
-            )
-        )
-
-
-        # Neumann problem
-        # swap bdry conditions
-        σ_exact = σ
-        τ = τ_exact
-
-        u, σ = solve_and_evaluate(
-            BoundaryValueProblem(
-                laplace,
-                Neumann(τ),
-                interior,
-                Γ
-            ),
-            direct,
-            S,
-            D,
-            S_target,
-            D_target,
-        )
-        # "recover constant" in the original code
-        offset = u_exact[1] - u[1]
-        u .+= offset
-        data(σ) .+= offset # TODO: put this inside solver maybe and user passes integration constant
-        push!(
-            num_solutions,
-            NeumannSolution{Interior,Direct}(
-                n,
-                u,
-                σ,
-                norm(u_exact - u, Inf),
-                norm(σ_exact - σ, Inf))
-        )
-
-        u, σ = solve_and_evaluate(
-            BoundaryValueProblem(
-                laplace,
-                Neumann(τ),
-                interior,
-                Γ
-            ),
-            indirect,
-            S,
-            D_star,
-            S_target,
-        )
-        # "recover constant" in the original code...
-        offset = u_exact[1] - u[1]
-        u .+= offset
-        data(σ) .+= offset # TODO: put this inside solver maybe and user passes integration constant
-        push!(
-            num_solutions,
-            NeumannSolution{Interior,Indirect}(
-                n,
-                u,
-                σ,
-                norm(u_exact - u, Inf),
-                norm(σ_exact - σ, Inf)
-            )
-        )
-
-
     end
 
-    return num_solutions
-
-
+    return res
 end
 
 
