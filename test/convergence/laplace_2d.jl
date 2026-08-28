@@ -29,9 +29,29 @@ include("../fixtures.jl")
 abstract type Solution end
 abstract type NumericalSolution{S,A} end
 
+# wip
+struct NumericalSolution2{
+    P<:BoundaryValueProblem,
+    A<:Approach,
+    C<:AbstractSingularCorrection
+}
+    n::Int
+    p::P
+    u::Vector{Float64}
+    cauchy_data::Vector{Float64}
+    correction::C
+    u_err
+    cauchy_data_err
+    function NumericalSolution2(
+        p::BoundaryValueProblem,
+        u::Vector{Float64},
+        cauchy_data::Vector{Float64}
+    )
+        return NumericalSolution2(length(p.boundary), p, u, cauchy_data)
+    end
+end
 
-
-mutable struct DirichletSolution{S<:DomainSide,A<:Approach,C<:HypersingularCorrection} <: NumericalSolution{S,A}
+struct DirichletSolution{S<:DomainSide,A<:Approach,C<:HypersingularCorrection} <: NumericalSolution{S,A}
     n
     u::Vector{Float64}
     τ::Vector{Float64}
@@ -48,6 +68,7 @@ struct NeumannSolution{S<:DomainSide,A<:Approach} <: NumericalSolution{S,A}
     σ_err
 end
 
+# unused
 struct ExactSolution{S<:DomainSide} <: Solution
     n
     u::Vector{Float64}
@@ -268,11 +289,18 @@ end
 
 
 
+@doc raw"""
+    convergence_study(n_vals=20:20:200, accuracy_order=32)
+
+run all methods with different parameters
+
+"""
 function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
 
     @show n_vals
     cutoff = 0.05
     @show cutoff
+
 
 
     # useful constants
@@ -370,9 +398,7 @@ function convergence_study(n_vals=20:20:200, accuracy_order=32; viz=false)
         D_target = DoubleLayer(laplace, Γ, x_test) # ok
         populate_matrices!(Γ, x_test, S_target, D_target)
 
-
         # Dirichlet Zeta Direct
-
         u, τ = solve_and_evaluate(
             BoundaryValueProblem(
                 laplace,
