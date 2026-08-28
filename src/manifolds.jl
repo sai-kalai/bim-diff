@@ -1,4 +1,3 @@
-abstract type AbstractManifold end # TODO: move to models
 
 # IDEA:
 # specialize the concept of manifold. e.g. geometric manifold has tangents, etc.
