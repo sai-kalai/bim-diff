@@ -31,4 +31,6 @@ LocalPreferences.toml
 JuliaLocalPreferences.toml
 
 logs/
-figures
+figures/*
+data/*
+
