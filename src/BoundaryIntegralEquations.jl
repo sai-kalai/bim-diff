@@ -1,6 +1,7 @@
 module BoundaryIntegralEquations
 
 
+
 #
 # external packages
 #
@@ -11,6 +12,8 @@ using PolygonOps
 using NearestNeighbors
 using LinearSolve
 using RecursiveFactorization
+
+# internal modules
 
 #
 # type definitions
@@ -445,6 +448,9 @@ export visualize, visualize!
 function visualize end
 function visualize! end
 
+# development tools module
+include("DevTools/DevTools.jl")
+
 
 
 # trick lsp
@@ -457,6 +463,7 @@ function visualize! end
     include("../test/convergence/laplace_2d.jl")
     include("../test/operators.jl")
     include("../test/close_evaluation.jl")
+    include("../scripts/timing_plot.jl")
 
     # does not work
     include.(filter(contains(r".jl$"), readdir("../test/"; join=true)))

@@ -1,8 +1,8 @@
 using BoundaryIntegralEquations
+using BoundaryIntegralEquations.DevTools.Fixtures: test_locations, reference_operator_matrix
 using Test
 
 
-include("fixtures.jl")
 
 @testset "Integral operators" begin
 
