@@ -34,3 +34,5 @@ logs/
 figures/*
 data/*
 
+!*.gitkeep
+
