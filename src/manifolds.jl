@@ -59,6 +59,13 @@ struct DiscreteClosedCurve{
     end
 end
 
+function Base.show(io::IO, ::MIME"text/plain", c::DiscreteClosedCurve{T}) where {T}
+    print(io, "DiscreteClosedCurve{", T, "...} with ", size(c, 2), " nodes")
+end
+function Base.show(io::IO, ::Type{<:DiscreteClosedCurve{T}}) where {T}
+    print(io, "DiscreteClosedCurve{", T, "...}")
+end
+
 
 @doc raw"""
     Base.extrema(c::DiscreteClosedCurve)
