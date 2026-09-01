@@ -253,7 +253,7 @@ struct BIESolution{
     P<:BoundaryValueProblem, # BVP that this helps solve
     U<:AbstractVector{T},
     AL<:BIEAlgorithm{A},
-    BP<:BIEProblem{A,P}, # BIE that this solves
+    BP<:BIEProblem{A,P}, # BIE that this solves NOTE: superfluous
 } <: AbstractSolution{A,T,P}
     # TODO: Link this with Linear Solution, wrapping or inheriting
     u::U # boundary density that solves the bie
