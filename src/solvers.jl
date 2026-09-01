@@ -448,7 +448,7 @@ function evaluate(
 )::Tuple{AbstractVector,Dirichlet}
     S_target = SingleLayer(problem.equation, problem.boundary, target; matrix_factory=matrix_factory)
     D_target = DoubleLayer(problem.equation, problem.boundary, target; matrix_factory=matrix_factory)
-    populate_matrices!(problem.boundary, target, D_target)
+    populate_matrices!(problem.boundary, target, D_target, S_target)
     return evaluate(problem, approach, σ, S_target, D_target)
 end
 
