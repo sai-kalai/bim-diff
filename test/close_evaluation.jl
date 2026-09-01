@@ -61,9 +61,7 @@ using Test
             boundary_data = f.(vec(reinterpret(ComplexF64, boundary.x)))
             inside_evaluations = f.(x_test)
             ci = cauchy_integral(boundary, reinterpret(Float64, x_test'), boundary_data)
-            display(inside_evaluations - ci)
             @test ci ≈ inside_evaluations atol=1e-7
-
 
             if abspath(PROGRAM_FILE) == @__FILE__
                 using GLMakie
