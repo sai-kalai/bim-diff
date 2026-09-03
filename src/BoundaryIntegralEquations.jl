@@ -453,20 +453,19 @@ include("DevTools/DevTools.jl")
 
 
 
-# trick lsp
+# trick lsp into tracking files to get tab completion and jump to source (nvim hack)
 @static if false
-    include("../scripts/main.jl")
-    include("../scripts/precomputed_coeffs.jl")
     include("../scripts/ellipse.jl")
+    include("../scripts/plot_convergence_laplace2d.jl")
+    include("../scripts/plot_utils.jl")
+    include("../scripts/plot_benchmark.jl")
+    include("../scripts/plot_dense.jl")
 
-    include("../test/quick_test.jl")
+    include("../benchmark/benchmark.jl")
+
     include("../test/convergence/laplace_2d.jl")
     include("../test/operators.jl")
     include("../test/close_evaluation.jl")
-    include("../scripts/timing_plot.jl")
-
-    # does not work
-    include.(filter(contains(r".jl$"), readdir("../test/"; join=true)))
 end
 
 end # module BoundaryIntegralEquations
