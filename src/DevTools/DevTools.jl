@@ -7,7 +7,9 @@ using ..BoundaryIntegralEquations
 
 export ConvergenceResult, SolverParameters, SolutionMetadata,
     SolutionWithMetadata, add_solutions!, SolutionGroup,
-    solutions, metadatas, trials, run_all_simulations, Fixtures
+    solutions, metadatas, trials, times
+
+export run_all_simulations, Fixtures
 
 include("Fixtures.jl")
 
@@ -54,6 +56,7 @@ const SolutionGroup = Vector{SolutionWithMetadata}
 solutions(g::SolutionGroup) = (s for (s, _) in g)
 metadatas(g::SolutionGroup) = (m for (_, m) in g)
 trials(g::SolutionGroup) = (m.trial for (_, m) in g)
+times(g::SolutionGroup) = (t.times for t in trials(g))
 
 @doc raw"""
     ConvergenceResult
@@ -147,7 +150,7 @@ Returns tuple of:
 - exact solution at test points
 
 """
-function manufactured_solution(eqn::DifferentialEquation, x_test,)
+function manufactured_solution(eqn::Laplace, x_test,)
     # TODO:
     x_source, density_source = Fixtures.point_sources()
     density_source = BoundaryDensity(density_source)
@@ -158,6 +161,8 @@ function manufactured_solution(eqn::DifferentialEquation, x_test,)
     u_exact = S_source * density_source # exact solution at test points
     return Γ_source, BoundaryDensity(density_source), u_exact
 end
+
+
 
 @doc raw"""
 
@@ -183,44 +188,12 @@ function run_all_simulations(
     @show fd_acc_vals
     @show kr_acc_vals
 
-
     # common variables
     laplace = Laplace()
     interior = Interior()
     exterior = Exterior()
     direct = Direct()
     indirect = Indirect()
-
-
-    # evaluation points for convergence results
-    # x_test = test_locations()
-    # x_test = [
-    #     x_test;;
-    #     ball(0.1, 10);;
-    #     ball(0.3, 30);;
-    #     ball(0.6, 60);;
-    #     # avoid  testing close evaluation for gradient
-    #     stack((t) -> starfish(t, 0.9), 0:0.1:2pi)
-    # ]
-
-
-    # dense grid for plotting
-    n_dense = 60
-    Γ_dense = DiscreteClosedCurve(n_dense, starfish)
-    xmin, xmax, ymin, ymax = extrema(Γ_dense)
-    xs = range(xmin, xmax, length=n_dense)
-    ys = range(ymin, ymax, length=n_dense)
-    iter = Iterators.product(xs, ys)
-    x_dense = stack(((x, y),) -> SA[x, y], iter; dims=2)
-
-
-    # get known solution at test and plot points
-    # x_source, density_source = point_sources()
-    # density_source = BoundaryDensity(density_source)
-    # # operators for exact solution at test and plot points
-    # Γ_source = make_dummy_curve(x_source)
-    # S_manuf = SingleLayer(laplace, Γ_source, x_test; matrix_factory=allocator, populate_matrix=true)
-    # u_exact = S_manuf * density_source # exact solution at test points
 
     Γ_source, density_source, u_exact = manufactured_solution(laplace, x_test)
     # accumulate results
@@ -233,10 +206,23 @@ function run_all_simulations(
     # @test u_exact[1:length(u_exact_reference)] ≈ u_exact_reference atol = 1e-15
 
     # storage for produced solutions
+    nan_count = 0
+    function validate_nan(sols...)
+
+        foreach(sols) do sol
+            @info "validating $(typeof(sol))"
+            @show sol.alg
+            if any(isnan, sol.u)
+                @warn "NaN found in solution"
+                @show sol.u
+                nan_count += 1
+            end
+        end
+    end
 
     for n in n_vals
 
-        @show n
+        @info @show n
 
         # boundary discretization
         Γ = DiscreteClosedCurve(n, starfish)
@@ -256,8 +242,9 @@ function run_all_simulations(
 
         for side in [interior,], bc in [Dirichlet(σ_exact), Neumann(τ_exact)]
 
+            @show side, typeof(bc)
+
             if !any(T -> bc isa T, bc_types)
-                @warn "skipping $bc"
                 continue
             end
 
@@ -277,12 +264,19 @@ function run_all_simulations(
             #    ) -> requires putting correct args
             # end
 
-            corrections = bc isa Dirichlet ? [Sidi(); [Zeta(x) for x in fd_acc_vals]] :
-                          bc isa Neumann ? [KapurRokhlin(x) for x in kr_acc_vals] :
-                          error("invalid bc")
+            corrections = if bc isa Dirichlet
+                [Sidi(); [Zeta(x) for x in fd_acc_vals]]
+            elseif bc isa Neumann
+                [KapurRokhlin(x) for x in kr_acc_vals]
+            else
+                error("invalid bc")
+            end
 
             for correction in corrections
+                @show correction
+
                 if Direct in approach_types
+                    @show direct
                     # direct approach
                     u, cauchy_data = solve_and_evaluate(
                         bvp,
@@ -291,6 +285,12 @@ function run_all_simulations(
                         x_test,
                     )
 
+                    if bc isa Neumann
+                        #recover integration constant
+                        offset = u_exact[1] - u[1]
+                        u .+= offset
+                        data(cauchy_data) .+= offset # TODO: put this inside solver maybe and user passes integration constant
+                    end
 
                     if benchmark
                         trial = @benchmark solve_and_evaluate(
@@ -322,6 +322,7 @@ function run_all_simulations(
                         BDProblem{Direct}(bvp),
                         BDPAlgorithm{Direct}(),
                     )
+                    validate_nan(bvp_sln, bie_sln, bdp_sln)
 
                     add_solutions!(res, correction, PotentialTheory(),
                         SolutionWithMetadata(bvp_sln, SolutionMetadata(trial)),
@@ -330,16 +331,22 @@ function run_all_simulations(
                 end
 
                 if Indirect in approach_types
+                    @show indirect
                     # indirect approach: cutoff is available
                     for cutoff in cutoff_vals
-                        if bc isa Neumann
-                            continue
-                        end
 
                         method = cutoff == 0. ? PotentialTheory() :
                                  isinf(cutoff) ? CauchyIntegral() :
                                  DistancePolicy(cutoff)
 
+                        if (bc isa Neumann) && !(method isa PotentialTheory)
+                            # not implemented
+                            @info "skipping $bc, $method"
+                            continue
+                        end
+
+
+                        @show method
 
                         if benchmark
                             trial = @benchmark solve_and_evaluate(
@@ -359,6 +366,13 @@ function run_all_simulations(
                             x_test,
                             cutoff,
                         )
+
+                        if (bc isa Neumann)
+                            #recover integration constant
+                            offset = u_exact[1] - u[1]
+                            u .+= offset
+                            data(cauchy_data) .+= offset # TODO: put this inside solver maybe and user passes integration constant
+                        end
 
                         # dummy placeholder
                         bie_sln = BIESolution(
@@ -382,6 +396,8 @@ function run_all_simulations(
                             BDPAlgorithm{Indirect}(correction),
                         )
 
+                        validate_nan(bvp_sln, bie_sln, bdp_sln)
+
                         add_solutions!(res, correction, method,
                             SolutionWithMetadata(bvp_sln, SolutionMetadata(trial)),
                             SolutionWithMetadata(bdp_sln, SolutionMetadata(trial))
@@ -392,6 +408,7 @@ function run_all_simulations(
         end
     end
 
+    @info @show nan_count
     return res
 end
 
