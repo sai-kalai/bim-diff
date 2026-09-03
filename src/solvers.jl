@@ -1,3 +1,20 @@
+is_garbage(x::Number) = isnan(x) || isinf(x) || abs(x) > 1e10
+has_garbage(a::Array) = any(is_garbage, a)
+has_garbage(o::IntegralOperator) = has_garbage(matrix(o))
+const CHECK_GARBAGE = true # TODO: turn off optionally
+function panic_if_garbage(ops...)
+    if CHECK_GARBAGE
+        foreach(ops) do o
+            if has_garbage(o)
+                @error "Operator contains garbage"
+                display(matrix(o))
+                error("Operator contains garbage. Either call constructor with `populate_matrix=true` or call `populate_matrices!(...)`")
+            end
+        end
+    else
+        return
+    end
+end
 
 # TODO: instead, overload commonsolve
 function solve_linear_system(A, b; algorithm=RFLUFactorization())
@@ -40,7 +57,8 @@ function solve(
     H::Hypersingular,
 )::Neumann
     # TODO: work in place to avoid allocating a new matrix
-    A = -0.5 + D_star # TODO: replace \ by LinearSolve
+    panic_if_garbage(D_star, H)
+    A = -0.5 + D_star
     τ = solve_linear_system(A, (H * problem.bc))
     return Neumann(τ) # this is actually already the unknown Neumann data
 end
@@ -90,6 +108,9 @@ function evaluate(
     S_target::SingleLayer,
     D_target::DoubleLayer,
 )::Tuple{AbstractVector,Neumann}
+
+    panic_if_garbage(S_target, D_target)
+
     u = S_target * τ - D_target * problem.bc
     return u, τ
 end
@@ -162,6 +183,8 @@ function solve(
     D::DoubleLayer
 )::BoundaryDensity
 
+    panic_if_garbage(D)
+
     φ = solve_linear_system(-0.5 + D, problem.bc.σ)
     return BoundaryDensity(φ)
 end
@@ -188,6 +211,8 @@ function evaluate(
     D_target::DoubleLayer,
     ::PotentialTheory,
 )::Tuple{AbstractVector,Neumann}
+
+    panic_if_garbage(H, D_target)
     τ = H * φ
     u = D_target * φ
     return u, Neumann(τ)
@@ -238,6 +263,8 @@ function evaluate(
     ;
     matrix_factory::Function=default_allocator,
 )
+
+    panic_if_garbage(H)
 
     m = size(target, 2)
 
@@ -309,6 +336,8 @@ function solve_and_evaluate(
     D_target::DoubleLayer
 )::Tuple{AbstractVector,Neumann}
 
+    panic_if_garbage(D, H, D_target)
+
     # WARN:
     # since operators are precomputed, client is responsible for ensuring that
     # the target points are found in the correct side of the domain.
@@ -378,6 +407,8 @@ function solve(
     D::DoubleLayer,
 )::Dirichlet
 
+    panic_if_garbage(S, D)
+
     # add 1 to kill 1d nullspace
     σ = solve_linear_system((0.5 + D) .+ problem.boundary.w, (S * problem.bc))
     return Dirichlet(σ)
@@ -422,6 +453,7 @@ function evaluate(
     S_target::SingleLayer,
     D_target::DoubleLayer,
 )::Tuple{AbstractVector,Dirichlet}
+    panic_if_garbage(S_target, D_target)
     u = S_target * problem.bc - D_target * σ
     return u, σ
 end
@@ -462,6 +494,8 @@ function solve_and_evaluate(
     D_target::DoubleLayer,
 )::Tuple{AbstractVector,Dirichlet}
 
+    panic_if_garbage(S, D, D_target, D_target)
+
     density = solve(problem, approach, S, D)
     u, σ = evaluate(problem, approach, density, S_target, D_target)
 
@@ -477,6 +511,7 @@ function solve_and_evaluate(
     ;
     matrix_factory::Function=default_allocator
 )::Tuple{AbstractVector,Dirichlet}
+
 
 
     density = solve(problem, approach, correction; matrix_factory=matrix_factory)
@@ -496,6 +531,8 @@ function solve(
     approach::Indirect,
     D_star,
 )::BoundaryDensity
+
+    panic_if_garbage(D_star)
 
     ψ = solve_linear_system((0.5 + D_star) .+ problem.boundary.w, problem.bc.τ)
 
@@ -524,6 +561,8 @@ function evaluate(
     S_target::SingleLayer,
 )::Tuple{AbstractVector,Dirichlet}
 
+    panic_if_garbage(S, S_target)
+
     σ = Dirichlet(S * ψ)
     u = S_target * ψ
 
@@ -543,7 +582,6 @@ function evaluate(
 
 
     S = SingleLayer(problem.equation, problem.boundary, correction; matrix_factory=matrix_factory, populate_matrix=true)
-
     S_target = SingleLayer(problem.equation, problem.boundary, target; matrix_factory=matrix_factory, populate_matrix=true)
 
     return evaluate(problem, approach, ψ, S, S_target)
@@ -557,6 +595,7 @@ function solve_and_evaluate(
     D_star::AdjointDoubleLayer,
     S_target::SingleLayer,
 )::Tuple{AbstractVector,Dirichlet}
+    panic_if_garbage(S, D_star, S_target)
     density = solve(problem, approach, D_star)
     u, σ = evaluate(problem, approach, density, S, S_target)
     return u, σ
@@ -575,7 +614,7 @@ function solve_and_evaluate(
 
     S = SingleLayer(problem.equation, problem.boundary, correction; matrix_factory=matrix_factory)
     D_star = AdjointDoubleLayer(problem.equation, problem.boundary; matrix_factory=matrix_factory)
-    populate_matrices!(problem.boundary, S)
+    populate_matrices!(problem.boundary, S, D_star)
 
     S_target = SingleLayer(problem.equation, problem.boundary, target; matrix_factory=matrix_factory, populate_matrix=true)
 
@@ -584,3 +623,16 @@ function solve_and_evaluate(
     return u, σ
 end
 
+# helper that ignores cutoff when passed
+# TODO: implement cauchy integral for neumann problems
+function solve_and_evaluate(
+    problem::BoundaryValueProblem{Laplace,<:Neumann,Interior,<:DiscreteClosedCurve},
+    approach::Indirect,
+    correction::SingularCorrection,
+    target::AbstractMatrix,
+    cutoff::Number,
+    ;
+    matrix_factory::Function=default_allocator,
+)::Tuple{AbstractVector,Dirichlet}
+    return solve_and_evaluate(problem, approach, correction, target; matrix_factory)
+end
