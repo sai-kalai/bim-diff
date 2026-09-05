@@ -1,13 +1,15 @@
 module DevTools
 
 using BenchmarkTools # keeping as dependency for now, find better way
+using LinearAlgebra
 using StaticArrays
 
 using ..BoundaryIntegralEquations
 
 export ConvergenceResult, SolverParameters, SolutionMetadata,
     SolutionWithMetadata, add_solutions!, SolutionGroup,
-    solutions, metadatas, trials, times
+    solutions, metadatas, trials, times, gctimes, manufactured_solution, errors
+
 
 export run_all_simulations, Fixtures
 
@@ -26,18 +28,17 @@ struct SolverParameters
     correction::AbstractSingularCorrection
     evalmethod::EvaluationMethod
 end
-# function Base.show(io::IO, ::MIME"text/plain", param::SolverParameters)
-#     println(io, "SolverParameters:")
-#     println(io, "  n_vals:          ", res.n_vals)
-#     println(io, "  cutoff_vals:     ", res.cutoff_vals)
-#     println(io, "  fd_acc_vals:     ", res.fd_acc_vals)
-#     println(io, "  kr_acc_vals:     ", res.kr_acc_vals)
-#     println(io, "  x:               ", summary(res.x))
-#     println(io, "  u_exact:         ", summary(res.u_exact))
-#     println(io, "  neumann_exact:   Dict with ", length(res.neumann_exact), " entries")
-#     println(io, "  dirichlet_exact: Dict with ", length(res.dirichlet_exact), " entries")
-#     print(io, "  solutions:       ", length(res.solutions), "-element", typeof(res.solutions))
+# function Base.show(io::IO, param::SolverParameters)
+#     print(io, "SolverParameters: ", )
 # end
+
+# compare keys
+function Base.isless(a::SolverParameters, b::SolverParameters)
+    if order(a.correction) != order(b.correction)
+        return order(a.correction) < order(b.correction)
+    end
+    return cutoff(a.evalmethod) < cutoff(b.evalmethod)
+end
 
 @doc raw"""
     SolutionMetadata
@@ -57,6 +58,8 @@ solutions(g::SolutionGroup) = (s for (s, _) in g)
 metadatas(g::SolutionGroup) = (m for (_, m) in g)
 trials(g::SolutionGroup) = (m.trial for (_, m) in g)
 times(g::SolutionGroup) = (t.times for t in trials(g))
+gctimes(g::SolutionGroup) = (t.gctimes for t in trials(g))
+
 
 @doc raw"""
     ConvergenceResult
@@ -101,6 +104,31 @@ function ConvergenceResult(
         Dict{Int,Vector{T}}(), # exact neumann and dirichlet data for each n value
         Dict{SolverParameters,Vector{SolutionWithMetadata}}(),
     )
+end
+
+@doc raw"""
+    errors(k::SolverParameters, res::ConvergenceResult, group::SolutionGroup)
+
+extract the errors of a particular solution type in a solution group in a convergence result
+"""
+function errors(key::SolverParameters, res::ConvergenceResult, group::SolutionGroup)
+    # NOTE: might be redundant to pass both key and group
+    sols = solutions(group)
+
+    errs = if key.solution_t <: BVPSolution
+        [norm(s.u - res.u_exact, Inf) for s in sols]
+    elseif key.solution_t <: BDPSolution
+        if key.bdrycond_t <: Dirichlet
+            [norm(s.u - res.neumann_exact[numpoints(s)], Inf) for s in sols]
+        elseif key.bdrycond_t <: Neumann
+            [norm(s.u - res.dirichlet_exact[numpoints(s)], Inf) for s in sols]
+        else
+            error("invalid bc type $(key.bdrycond_t)")
+        end
+    else
+        error("invalid solution type $(key.solution_t)")
+    end
+    return errs
 end
 
 function add_solutions!(res::ConvergenceResult, correction, evalmethod, sols_with_md...)
@@ -178,15 +206,15 @@ function run_all_simulations(
     kr_acc_vals=fd_acc_vals,
     approach_types=[Direct, Indirect],
     bc_types=[Dirichlet, Neumann],
-    viz=false,
     # indicate how to reserve memory
     allocator=(_m, _n) -> Matrix{Float64}(undef, _m, _n),
-    benchmark=false,
+    benchmark_kwargs=nothing,
 )
     @show n_vals
     @show cutoff_vals
     @show fd_acc_vals
     @show kr_acc_vals
+    @show benchmark_kwargs
 
     # common variables
     laplace = Laplace()
@@ -208,13 +236,12 @@ function run_all_simulations(
     # storage for produced solutions
     nan_count = 0
     function validate_nan(sols...)
-
         foreach(sols) do sol
             @info "validating $(typeof(sol))"
             @show sol.alg
             if any(isnan, sol.u)
                 @warn "NaN found in solution"
-                @show sol.u
+                # @show sol.u
                 nan_count += 1
             end
         end
@@ -283,7 +310,26 @@ function run_all_simulations(
                         direct,
                         correction,
                         x_test,
+                        ;
+                        matrix_factory=allocator
                     )
+
+                    if !isnothing(benchmark_kwargs)
+                        b = @benchmarkable solve_and_evaluate(
+                            $bvp,
+                            $direct,
+                            $correction,
+                            $x_test,
+                            ;
+                            matrix_factory=($allocator)
+                        )
+                        @time begin
+                            trial = run(b; benchmark_kwargs...)
+                        end
+                        display(trial)
+                    else
+                        trial = nothing
+                    end
 
                     if bc isa Neumann
                         #recover integration constant
@@ -292,16 +338,6 @@ function run_all_simulations(
                         data(cauchy_data) .+= offset # TODO: put this inside solver maybe and user passes integration constant
                     end
 
-                    if benchmark
-                        trial = @benchmark solve_and_evaluate(
-                            $bvp,
-                            $direct,
-                            $correction,
-                            $x_test,
-                        )
-                    else
-                        trial = nothing
-                    end
 
                     # dummy placeholder for now
                     bie_sln = BIESolution(
@@ -339,39 +375,45 @@ function run_all_simulations(
                                  isinf(cutoff) ? CauchyIntegral() :
                                  DistancePolicy(cutoff)
 
-                        if (bc isa Neumann) && !(method isa PotentialTheory)
-                            # not implemented
-                            @info "skipping $bc, $method"
+                        try
+                            u, cauchy_data = solve_and_evaluate(
+                                bvp,
+                                indirect,
+                                correction,
+                                x_test,
+                                cutoff,
+                                ;
+                                matrix_factory=allocator
+                            )
+                        catch e
+                            @error e
                             continue
                         end
-
-
-                        @show method
-
-                        if benchmark
-                            trial = @benchmark solve_and_evaluate(
-                                $bvp,
-                                $indirect,
-                                $correction,
-                                $x_test,
-                                $cutoff,
-                            )
-                        else
-                            trial = nothing
-                        end
-                        u, cauchy_data = solve_and_evaluate(
-                            bvp,
-                            indirect,
-                            correction,
-                            x_test,
-                            cutoff,
-                        )
 
                         if (bc isa Neumann)
                             #recover integration constant
                             offset = u_exact[1] - u[1]
                             u .+= offset
                             data(cauchy_data) .+= offset # TODO: put this inside solver maybe and user passes integration constant
+                        end
+
+                        @show method
+                        if !isnothing(benchmark_kwargs)
+                            b = @benchmarkable solve_and_evaluate(
+                                $bvp,
+                                $indirect,
+                                $correction,
+                                $x_test,
+                                $cutoff,
+                                ;
+                                matrix_factory=($allocator)
+                            )
+                            @time begin
+                                trial = run(b; benchmark_kwargs...)
+                            end
+                            display(trial)
+                        else
+                            trial = nothing
                         end
 
                         # dummy placeholder

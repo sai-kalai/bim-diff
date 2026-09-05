@@ -1,22 +1,25 @@
 # Shared functionality for plotting consistently
 
 using LinearAlgebra
-using BoundaryIntegralEquations: BoundaryIntegralEquations, DevTools
+using BoundaryIntegralEquations
+using BoundaryIntegralEquations.DevTools
 
-const OFFSET = 10
 # categorical colormaps for correction orders
 function get_colormap(res::ConvergenceResult, ::Type{<:Zeta})
-    Reverse(cgrad(
-        :blues,
+    # Reverse(
+    cgrad(
+        :reds,
         length(res.fd_acc_vals), categorical=true
-    ))
+    )
+    # )
 end
 function get_colormap(res::ConvergenceResult, ::Type{<:KapurRokhlin})
-    Reverse(cgrad(
-        :reds,
+    # Reverse(
+    cgrad(
+        :blues,
         length(res.kr_acc_vals), categorical=true
     )
-    )
+    # )
 end
 get_colormap(::ConvergenceResult, ::Type{<:Sidi}) = :tab10 # dummy
 get_colormap(res::ConvergenceResult, c::AbstractSingularCorrection) = get_colormap(res, typeof(c))
@@ -28,11 +31,14 @@ get_colorrange(res::ConvergenceResult, c::AbstractSingularCorrection) = get_colo
 
 get_markercolorrange(res::ConvergenceResult, ::Type{<:EvaluationMethod}) = (0.5, length(res.cutoff_vals) + 0.5)
 get_markercolorrange(res::ConvergenceResult, m::EvaluationMethod) = get_markercolorrange(res, typeof(m))
-get_markercolormap(res::ConvergenceResult, ::Type{<:EvaluationMethod}) = Reverse(cgrad(
-    :greens,
-    length(res.cutoff_vals), categorical=true
-)
-)
+function get_markercolormap(res::ConvergenceResult, ::Type{<:EvaluationMethod})
+    # Reverse(
+    cgrad(
+        :greens,
+        length(res.cutoff_vals), categorical=true
+        # )
+    )
+end
 get_markercolormap(res::ConvergenceResult, m::EvaluationMethod) = get_markercolormap(res, typeof(m))
 function get_marker(k::SolverParameters)
     if k.solution_t <: BVPSolution
@@ -76,11 +82,7 @@ function get_color(k::SolverParameters, res::ConvergenceResult)
     end
 end
 function get_markercolor(k::SolverParameters, res::ConvergenceResult)
-    if k.evalmethod isa DistancePolicy
-        findfirst(==(k.evalmethod.cutoff), res.cutoff_vals)
-    else
-        get_color(k, res)
-    end
+    findfirst(==(cutoff(k.evalmethod)), res.cutoff_vals)
 end
 
 
@@ -120,8 +122,6 @@ function scatterlines_common_kwargs(k::SolverParameters, res::ConvergenceResult)
 end
 
 function scatterlines_common_legend!(fig, res::ConvergenceResult)
-
-
     # collect all uniques
     linestyles = Symbol[]
     linestyle_labels = String[]
@@ -142,7 +142,6 @@ function scatterlines_common_legend!(fig, res::ConvergenceResult)
 
         end
 
-
         if !(ls in linestyles)
             push!(linestyles, ls)
             push!(linestyle_labels, "$(k.approach_t.name.name) Approach")
@@ -161,10 +160,8 @@ function scatterlines_common_legend!(fig, res::ConvergenceResult)
             push!(markers, mk)
             push!(marker_labels, s)
         end
-
-
-
     end
+
     @show linestyles
     @show linestyle_labels
     @show markers
@@ -181,13 +178,13 @@ function scatterlines_common_legend!(fig, res::ConvergenceResult)
         ],
         [linestyle_labels, marker_labels, color_labels],
         ["Linestyle", "Marker", "Color"],
-        tellwidth=false,
-        tellheight=false,
-        halign=:right,
-        valign=:top,
-        margin=(10, 10, 10, 10),
+        tellwidth=true,
+        tellheight=true,
+        # halign=:right,
+        # valign=:top,
+        # margin=(10, 10, 10, 10),
         orientation=:horizontal,
-        nbanks=2,
+        # nbanks=2,
     )
 
     return legend
@@ -195,22 +192,22 @@ end
 
 function scatterlines_common_colorbars!(fig, res::ConvergenceResult)
     c1 = Colorbar(
-        fig[1, 2],
+        fig,
         colormap=get_colormap(res, KapurRokhlin),
         limits=get_colorrange(res, KapurRokhlin),
-        ticks=(1:length(res.kr_acc_vals), string.(res.kr_acc_vals)), # Displays "8", "26", "32" at bin centers
+        ticks=(1:length(res.kr_acc_vals), string.(res.kr_acc_vals)),
         label="KR Order (Line Color)"
     )
 
     c2 = Colorbar(
-        fig[1, 3],
+        fig,
         colormap=get_colormap(res, Zeta),
         limits=get_colorrange(res, Zeta),
-        ticks=(1:length(res.fd_acc_vals), string.(res.fd_acc_vals)), # Displays "8", "26", "32" at bin centers
+        ticks=(1:length(res.fd_acc_vals), string.(res.fd_acc_vals)),
         label="FD Order (Line Color)"
     )
     c3 = Colorbar(
-        fig[1, 4],
+        fig,
         colormap=get_markercolormap(res, DistancePolicy),
         limits=get_markercolorrange(res, DistancePolicy),
         ticks=(1:length(res.cutoff_vals), string.(res.cutoff_vals)),
@@ -221,6 +218,7 @@ end
 
 function plot_errors(
     res::ConvergenceResult,
+    ;
 )
     # Plot
     fig = Figure()
@@ -244,26 +242,28 @@ function plot_errors(
         sols = solutions(group)
         ns = [numpoints(s) for s in sols]
 
-        errs = if key.solution_t <: BVPSolution
-            [norm(s.u - res.u_exact, Inf) for s in sols]
-        elseif key.solution_t <: BDPSolution
-            if key.bdrycond_t <: Dirichlet
-                [norm(s.u - res.neumann_exact[numpoints(s)], Inf) for s in sols]
-            elseif key.bdrycond_t <: Neumann
-                [norm(s.u - res.dirichlet_exact[numpoints(s)], Inf) for s in sols]
-            else
-                error("invalid bc type $(key.bdrycond_t)")
-            end
-        else
-            error("invalid solution type $(key.solution_t)")
-        end
+        # extract error according to solution type
+        # errs = if key.solution_t <: BVPSolution
+        #     [norm(s.u - res.u_exact, Inf) for s in sols]
+        # elseif key.solution_t <: BDPSolution
+        #     if key.bdrycond_t <: Dirichlet
+        #         [norm(s.u - res.neumann_exact[numpoints(s)], Inf) for s in sols]
+        #     elseif key.bdrycond_t <: Neumann
+        #         [norm(s.u - res.dirichlet_exact[numpoints(s)], Inf) for s in sols]
+        #     else
+        #         error("invalid bc type $(key.bdrycond_t)")
+        #     end
+        # else
+        #     error("invalid solution type $(key.solution_t)")
+        # end
+
+        errs = errors(key, res, group)
 
         if any(isnan, errs)
             @warn "NaN found in errors"
             @show key
-            @show errs
-            @show res.u_exact
-
+            # @show errs
+            # @show res.u_exact
             for s in sols
                 if any(isnan, s.u)
                     @show typeof(bvp(s))

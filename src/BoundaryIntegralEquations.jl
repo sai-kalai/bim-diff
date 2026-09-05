@@ -1,7 +1,6 @@
 module BoundaryIntegralEquations
 
 
-
 #
 # external packages
 #
@@ -29,6 +28,7 @@ TODO:
 - make parametric on equation, isself (only SL and DL can be not self)
 """
 abstract type IntegralOperator end
+
 
 @doc raw"""
     DifferentialEquation
@@ -63,6 +63,10 @@ abstract type SingularCorrection <: AbstractSingularCorrection end
 struct KapurRokhlin <: SingularCorrection
     order::Int
 end
+
+order(c::Zeta) = c.order
+order(c::KapurRokhlin) = c.order
+order(::Sidi) = Inf # unsure about this value
 
 
 @doc raw"""
@@ -133,6 +137,10 @@ struct DistancePolicy{T<:Real} <: EvaluationMethod
     cutoff::T
 end
 
+cutoff(::CauchyIntegral) = Inf
+cutoff(::PotentialTheory) = 0.0
+cutoff(d::DistancePolicy) = d.cutoff
+
 @doc raw"""
     AbstractAlgorithm
 
@@ -142,9 +150,6 @@ Represents an algorithm used to solve a problem by an approach
 
 abstract type AbstractAlgorithm{A<:Approach} end
 
-approach(::AbstractAlgorithm{A}) where {A} = A
-correction(::AbstractAlgorithm) = nothing
-evalmethod(::AbstractAlgorithm) = Type{PotentialTheory}
 
 @doc raw"""
 
@@ -183,7 +188,6 @@ end
 function BVPAlgorithm{Indirect}(m::EvaluationMethod)
     IndirectBVPAlgorithm(m)
 end
-evalmethod(a::BVPAlgorithm{Indirect}) = a.evalmethod
 struct DirectBVPAlgorithm <: BVPAlgorithm{Direct} # private
 end
 struct IndirectBVPAlgorithm{M<:EvaluationMethod} <: BVPAlgorithm{Indirect} # private
@@ -198,11 +202,16 @@ end
 function BDPAlgorithm{Indirect}(correction::C) where {C<:AbstractSingularCorrection}
     IndirectBDPAlgorithm(correction)
 end
-correction(a::BDPAlgorithm{Indirect}) = a.correction
 struct DirectBDPAlgorithm <: BDPAlgorithm{Direct} end
 struct IndirectBDPAlgorithm{C<:AbstractSingularCorrection} <: BDPAlgorithm{Indirect}
     correction::C
 end
+# traits
+approach(::AbstractAlgorithm{A}) where {A} = A
+correction(::AbstractAlgorithm) = nothing
+evalmethod(::AbstractAlgorithm) = Type{PotentialTheory}
+evalmethod(a::BVPAlgorithm{Indirect}) = a.evalmethod
+correction(a::BDPAlgorithm{Indirect}) = a.correction
 
 # remaining: check that the correction specified for BIE and BDP match the respective
 # boundary condition when calling solve(prob, alg)
@@ -389,6 +398,16 @@ const NumericalSolution{
     BDPSolution{A,T,P},
 }
 
+function Base.show(io::IO, ::Type{<:BVPSolution{A,T,P}}) where {A,T,P}
+    print(io, "BVPSolution")
+end
+function Base.show(io::IO, ::Type{<:BIESolution{A,T,P}}) where {A,T,P}
+    print(io, "BIESolution")
+end
+function Base.show(io::IO, ::Type{<:BDPSolution{A,T,P}}) where {A,T,P}
+    print(io, "BDPSolution")
+end
+
 # solution/algorithm traits
 
 numpoints(s::AbstractSolution) = size(bvp(s).boundary.x, 2)
@@ -418,7 +437,7 @@ export DiscreteClosedCurve, make_dummy_curve, polygon, mask, length_scale
 
 export DifferentialEquation, Laplace, Helmholtz, Stokes
 export AbstractSingularCorrection, SingularCorrection, KapurRokhlin,
-    HypersingularCorrection, Sidi, Zeta
+    HypersingularCorrection, Sidi, Zeta, order
 
 export DomainSide, Interior, Exterior
 export IntegralOperator, SingleLayer, DoubleLayer, AdjointDoubleLayer, Hypersingular
@@ -432,7 +451,7 @@ export AbstractSolution, BIESolution, BVPSolution, BDPSolution, NumericalSolutio
 
 export AbstractAlgorithm, BIEAlgorithm, BVPAlgorithm, BDPAlgorithm
 
-export EvaluationMethod, PotentialTheory, CauchyIntegral, DistancePolicy
+export EvaluationMethod, PotentialTheory, CauchyIntegral, DistancePolicy, cutoff
 
 export approach, boundary_condition
 
@@ -460,6 +479,8 @@ include("DevTools/DevTools.jl")
     include("../scripts/plot_utils.jl")
     include("../scripts/plot_benchmark.jl")
     include("../scripts/plot_dense.jl")
+    include("../scripts/plot_problem_setup.jl")
+    include("../scripts/plot_efficiency.jl")
 
     include("../benchmark/benchmark.jl")
 

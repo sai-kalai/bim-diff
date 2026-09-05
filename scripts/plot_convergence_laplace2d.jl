@@ -30,6 +30,7 @@ else
 end
 
 result = load_object(DATAFILE)
+@info "loaded `result` from $DATAFILE"
 
 fig, ax = plot_errors(result)
 

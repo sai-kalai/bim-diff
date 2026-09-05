@@ -22,6 +22,7 @@ end
 function BoundaryIntegralEquations.visualize!(
     ax::Axis,
     b::DiscreteClosedCurve,
+    # TODO: these should be kwargs
     arrows::Bool=true,
     parameter::Bool=true,
 )
@@ -56,6 +57,12 @@ function BoundaryIntegralEquations.visualize!(
 end
 
 
+@doc raw"""
+    Makie.tricontourf!(ax::Axis, b::DiscreteClosedCurve, positions::AbstractMatrix, values::AbstractVector, boundary_values::AbstractVector, ;, kwargs...)
+
+triangulated contour filled plot. Calculates triangulation including boundary
+points
+"""
 function Makie.tricontourf!(
     ax::Axis,
     b::DiscreteClosedCurve,
