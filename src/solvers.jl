@@ -630,9 +630,11 @@ function solve_and_evaluate(
     approach::Indirect,
     correction::SingularCorrection,
     target::AbstractMatrix,
-    cutoff::Number,
+    cutoff::Number, # dummy
     ;
     matrix_factory::Function=default_allocator,
 )::Tuple{AbstractVector,Dirichlet}
+    throw("not implemented")
+    println("neumann with cutoff $cutoff")
     return solve_and_evaluate(problem, approach, correction, target; matrix_factory)
 end
